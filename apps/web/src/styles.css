@@ -516,22 +516,28 @@ input:focus-visible {
 }
 
 .tl-range {
+  min-width: 0;
+}
+
+.tl-range-main {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .tl-range-text {
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 22px;
+  line-height: 1.15;
   letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
 }
 
 .tl-span-text {
   font-size: 13px;
+  line-height: 1.2;
   color: var(--ink-soft);
 }
 
@@ -1093,6 +1099,10 @@ input:focus-visible {
     gap: 8px;
   }
 
+  .tl-status {
+    padding: 5px 14px;
+  }
+
   .tl-nav {
     flex-wrap: nowrap;
     width: 100%;
@@ -1439,12 +1449,25 @@ input:focus-visible {
 
 /* ---------- Loading states ---------- */
 
-.tl-loading {
-  display: inline-flex;
+.tl-status {
+  flex: none;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: 7px;
+  padding: 6px 20px;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ink-soft) 5%, var(--surface));
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
   color: var(--ink-soft);
+}
+
+.tl-status.paused {
+  background: transparent;
+  font-weight: 400;
+  opacity: 0.8;
 }
 
 .spinner {

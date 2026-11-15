@@ -196,14 +196,10 @@ export function Timeline({
     <section className="tl-card">
       <div className="tl-head">
         <div className="tl-range">
-          <span className="tl-range-text">{rangeText}</span>
-          <span className="tl-span-text">{spanText}</span>
-          {loadingMore && (
-            <span className={`tl-loading${wikiPaused ? " paused" : ""}`} role="status">
-              {!wikiPaused && <span className="spinner" aria-hidden="true" />}
-              {t(locale, wikiPaused ? "wikidataUnavailable" : "loadingMore")}
-            </span>
-          )}
+          <div className="tl-range-main">
+            <span className="tl-range-text">{rangeText}</span>
+            <span className="tl-span-text">{spanText}</span>
+          </div>
         </div>
         <div className="tl-nav">
           <div role="group" aria-label={t(locale, "zoom")} title={t(locale, "zoom")} className="segmented zoom">
@@ -239,6 +235,13 @@ export function Timeline({
           </button>
         </div>
       </div>
+
+      {loadingMore && (
+        <div className={`tl-status${wikiPaused ? " paused" : ""}`} role="status">
+          {!wikiPaused && <span className="spinner" aria-hidden="true" />}
+          {t(locale, wikiPaused ? "wikidataUnavailable" : "loadingMore")}
+        </div>
+      )}
 
       <div className="tl-axis" aria-hidden="true">
         <div className="tl-track" ref={trackRef}>

@@ -51,7 +51,7 @@ const messages = {
     war: "Wars",
     invention: "Science & technology",
     artwork: "Arts & culture",
-    place: "Buildings",
+    place: "Buildings & monuments",
   },
   nl: {
     brand: "Historizon",
@@ -101,7 +101,7 @@ const messages = {
     war: "Oorlogen",
     invention: "Wetenschap & techniek",
     artwork: "Kunst & cultuur",
-    place: "Bouwwerken",
+    place: "Bouwwerken & monumenten",
   },
 } as const satisfies Record<Locale, Record<string, string>>;
 

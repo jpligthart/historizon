@@ -40,7 +40,7 @@ const messages = {
     closeDetail: "Close",
     sourcePrefix: "Source:",
     licensedUnder: "text available under",
-    about: "About",
+    about: "Info",
     aboutTitle: "About Historizon",
     aboutBlurb:
       "A zoomable timeline of people, empires, eras, wars and discoveries – so you can see what happened side by side.",
@@ -100,7 +100,7 @@ const messages = {
     closeDetail: "Sluiten",
     sourcePrefix: "Bron:",
     licensedUnder: "tekst beschikbaar onder",
-    about: "Over",
+    about: "Info",
     aboutTitle: "Over Historizon",
     aboutBlurb:
       "Een zoombare tijdlijn van personen, rijken, tijdperken, oorlogen en ontdekkingen – zodat je ziet wat er naast elkaar speelde.",

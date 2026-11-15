@@ -43,12 +43,13 @@ const messages = {
     footerWiki: "Summaries from Wikipedia,",
     detail: "Detail",
     person: "People",
-    period: "Periods",
+    state: "Empires & states",
+    period: "Eras",
     event: "Events",
     war: "Wars",
-    invention: "Inventions",
+    invention: "Science & technology",
     artwork: "Artworks",
-    place: "Places",
+    place: "Buildings",
   },
   nl: {
     brand: "Historizon",
@@ -90,12 +91,13 @@ const messages = {
     footerWiki: "Samenvattingen van Wikipedia,",
     detail: "Detail",
     person: "Personen",
-    period: "Periodes",
+    state: "Rijken & staten",
+    period: "Tijdperken",
     event: "Gebeurtenissen",
     war: "Oorlogen",
-    invention: "Uitvindingen",
+    invention: "Wetenschap & techniek",
     artwork: "Kunstwerken",
-    place: "Plaatsen",
+    place: "Bouwwerken",
   },
 } as const satisfies Record<Locale, Record<string, string>>;
 
@@ -107,7 +109,8 @@ export function t(locale: Locale, key: MessageKey): string {
 
 export const CATEGORY_COLORS: Record<Category, string> = {
   person: "#0F766E",
-  period: "#1D4ED8",
+  state: "#1D4ED8",
+  period: "#4D7C0F",
   event: "#B45309",
   war: "#B91C1C",
   invention: "#7E22CE",

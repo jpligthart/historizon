@@ -1,5 +1,7 @@
+/** Display order = lane order. "state" = empires, states, dynasties; "period" = eras. */
 export const CATEGORIES = [
   "person",
+  "state",
   "period",
   "event",
   "war",

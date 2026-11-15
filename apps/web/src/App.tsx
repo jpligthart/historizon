@@ -77,8 +77,6 @@ export function App() {
     setListOpen(false);
     searchRef.current?.focus();
   };
-  /** Items per category actually drawn on the timeline (after level-of-detail trimming). */
-  const [drawnCounts, setDrawnCounts] = useState<Partial<Record<Category, number>>>({});
 
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -315,25 +313,6 @@ export function App() {
           </div>
           <span className="tagline">{t(locale, "tagline")}</span>
         </div>
-        <div className="control-group">
-          <span className="control-label">{t(locale, "language")}</span>
-          <div role="group" aria-label={t(locale, "language")} className="segmented">
-            {(["nl", "en"] as const).map((lg) => (
-              <button
-                key={lg}
-                type="button"
-                className={`seg${locale === lg ? " on" : ""}`}
-                aria-pressed={locale === lg}
-                onClick={() => setLocale(lg)}
-              >
-                {lg.toUpperCase()}
-              </button>
-            ))}
-          </div>
-        </div>
-      </header>
-
-      <div className="toolbar">
         <div className={`search${showSearchStatus ? " has-status" : query ? " has-clear" : ""}`}>
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="11" cy="11" r="7" />
@@ -431,7 +410,25 @@ export function App() {
             </ul>
           )}
         </div>
+        <div className="control-group">
+          <span className="control-label">{t(locale, "language")}</span>
+          <div role="group" aria-label={t(locale, "language")} className="segmented">
+            {(["nl", "en"] as const).map((lg) => (
+              <button
+                key={lg}
+                type="button"
+                className={`seg${locale === lg ? " on" : ""}`}
+                aria-pressed={locale === lg}
+                onClick={() => setLocale(lg)}
+              >
+                {lg.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </div>
+      </header>
 
+      <div className="toolbar">
         <div className="chips" role="group" aria-label={t(locale, "categories")}>
           {CATEGORIES.map((cat) => {
             const on = !hidden.has(cat);
@@ -449,32 +446,9 @@ export function App() {
                   style={on ? { background: color } : { border: `2px solid ${color}` }}
                 />
                 <span>{t(locale, cat)}</span>
-                <span className="chip-count">
-                  {on ? (drawnCounts[cat] ?? 0) : items.filter((i) => i.category === cat).length}
-                </span>
               </button>
             );
           })}
-        </div>
-
-        <div className="control-group">
-          <span className="control-label">{t(locale, "zoom")}</span>
-          <div role="group" aria-label={t(locale, "zoom")} className="segmented">
-            {ZOOM_PRESETS_YEARS.map((z) => {
-              const on = Math.abs(z - span) < 0.5;
-              return (
-                <button
-                  key={z}
-                  type="button"
-                  className={`seg num${on ? " on" : ""}`}
-                  aria-pressed={on}
-                  onClick={() => setZoom(z)}
-                >
-                  {z}
-                </button>
-              );
-            })}
-          </div>
         </div>
       </div>
 
@@ -495,8 +469,9 @@ export function App() {
           onPanBack={() => panBy(-1)}
           onPanForward={() => panBy(1)}
           onNow={goNow}
+          zoomPresets={ZOOM_PRESETS_YEARS}
+          onZoom={setZoom}
           loadingMore={loadingMore}
-          onVisibleCounts={setDrawnCounts}
         />
         {selected && (
           <DetailPanel

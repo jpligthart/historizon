@@ -38,9 +38,14 @@ export function openDb(): DatabaseSync {
   return db;
 }
 
-function migrate(database: DatabaseSync): void {
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS items (
+const ITEM_COLUMNS = [
+  "id", "title", "title_nl", "category", "start_year", "end_year", "description", "description_nl",
+  "wikipedia_url", "wikipedia_url_nl", "wikidata_id", "extract_cached_at", "importance",
+];
+
+function itemsTableSql(name: string): string {
+  return `
+    CREATE TABLE IF NOT EXISTS ${name} (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       title_nl TEXT,
@@ -52,8 +57,43 @@ function migrate(database: DatabaseSync): void {
       wikipedia_url TEXT,
       wikipedia_url_nl TEXT,
       wikidata_id TEXT,
-      extract_cached_at TEXT
-    );
+      extract_cached_at TEXT,
+      importance INTEGER
+    );`;
+}
+
+/**
+ * SQLite can't change a CHECK constraint in place. When CATEGORIES gains a value, rebuild
+ * the items table (copying all rows) so the new category is accepted.
+ */
+function rebuildItemsIfCategoriesChanged(database: DatabaseSync): void {
+  const row = database.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'items'`).get() as
+    | { sql: string }
+    | undefined;
+  if (!row || CATEGORIES.every((c) => row.sql.includes(`'${c}'`))) return;
+
+  const existing = new Set(
+    (database.prepare(`PRAGMA table_info(items)`).all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  const cols = ITEM_COLUMNS.filter((c) => existing.has(c)).join(", ");
+  database.exec("BEGIN");
+  try {
+    database.exec(`ALTER TABLE items RENAME TO items_old`);
+    database.exec(itemsTableSql("items"));
+    database.exec(`INSERT INTO items (${cols}) SELECT ${cols} FROM items_old`);
+    database.exec(`DROP TABLE items_old`);
+    database.exec("COMMIT");
+    console.log(`[db] items table rebuilt for categories: ${CATEGORIES.join(", ")}`);
+  } catch (err) {
+    database.exec("ROLLBACK");
+    throw err;
+  }
+}
+
+function migrate(database: DatabaseSync): void {
+  rebuildItemsIfCategoriesChanged(database);
+  database.exec(`
+    ${itemsTableSql("items")}
 
     CREATE INDEX IF NOT EXISTS idx_items_years ON items(start_year, end_year);
     CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
@@ -83,6 +123,12 @@ function migrate(database: DatabaseSync): void {
       qid TEXT PRIMARY KEY,
       roots TEXT NOT NULL,
       fetched_at INTEGER NOT NULL
+    );
+
+    -- One-off data migrations that have run (key = migration name).
+    CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
     );
 
     -- Wikipedia search results (as Wikidata ids, in relevance order) per language + query.
@@ -287,7 +333,9 @@ export function upsertWikidataItems(database: DatabaseSync, items: WikidataItem[
       title_nl = COALESCE(title_nl, ?),
       wikipedia_url = COALESCE(wikipedia_url, ?),
       wikipedia_url_nl = COALESCE(wikipedia_url_nl, ?),
-      importance = MAX(COALESCE(importance, 0), ?)
+      importance = MAX(COALESCE(importance, 0), ?),
+      -- Dynasties are often tagged both "dynasty" and "historical period": state wins.
+      category = CASE WHEN id LIKE 'wd-%' AND category = 'period' AND ? = 'state' THEN 'state' ELSE category END
     WHERE id = ?`);
 
   database.exec("BEGIN");
@@ -299,7 +347,7 @@ export function upsertWikidataItems(database: DatabaseSync, items: WikidataItem[
         (url ? (findByUrl.get(url, it.wikipediaUrl ?? url) as ItemRow | undefined) : undefined) ??
         (findByTitle.get(it.category, it.startYear, it.title, it.titleNl ?? it.title) as ItemRow | undefined);
       if (existing) {
-        enrich.run(it.qid, it.titleNl, url, it.wikipediaUrlNl, it.sitelinks, existing.id);
+        enrich.run(it.qid, it.titleNl, url, it.wikipediaUrlNl, it.sitelinks, it.category, existing.id);
         if (!existing.title_nl && it.titleNl) refreshFts(database, existing.id);
         continue;
       }
@@ -479,4 +527,50 @@ export function linkItemToWikidata(database: DatabaseSync, id: string, qid: stri
     database.exec("ROLLBACK");
     throw err;
   }
+}
+
+// ---------- One-off data migrations ----------
+
+export function hasRun(database: DatabaseSync, key: string): boolean {
+  return database.prepare(`SELECT 1 FROM app_meta WHERE key = ?`).get(key) !== undefined;
+}
+
+export function markRun(database: DatabaseSync, key: string): void {
+  database.prepare(`INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)`).run(key, new Date().toISOString());
+}
+
+/** Wikidata ids of all items in a category. */
+export function qidsInCategory(database: DatabaseSync, category: Category): string[] {
+  return (
+    database.prepare(`SELECT wikidata_id FROM items WHERE category = ? AND wikidata_id IS NOT NULL`).all(category) as Array<{
+      wikidata_id: string;
+    }>
+  ).map((r) => r.wikidata_id);
+}
+
+export function setCategoryForQids(database: DatabaseSync, qids: string[], category: Category): number {
+  if (qids.length === 0) return 0;
+  const res = database
+    .prepare(`UPDATE items SET category = ? WHERE wikidata_id IN (${qids.map(() => "?").join(",")})`)
+    .run(category, ...qids);
+  return Number(res.changes);
+}
+
+/** Forget fetched tiles for a category so they are fetched again with the current query. */
+export function resetTiles(database: DatabaseSync, category: Category): void {
+  database.prepare(`DELETE FROM tiles WHERE key LIKE ?`).run(`${category}:%`);
+}
+
+/** Remove discovered items by Wikidata id. Curated (seed) items are never removed. */
+export function deleteDiscoveredItems(database: DatabaseSync, qids: string[]): number {
+  if (qids.length === 0) return 0;
+  const where = `id LIKE 'wd-%' AND wikidata_id IN (${qids.map(() => "?").join(",")})`;
+  const ids = (database.prepare(`SELECT id FROM items WHERE ${where}`).all(...qids) as Array<{ id: string }>).map(
+    (r) => r.id,
+  );
+  for (const id of ids) {
+    database.prepare(`DELETE FROM items_fts WHERE id = ?`).run(id);
+    database.prepare(`DELETE FROM items WHERE id = ?`).run(id);
+  }
+  return ids.length;
 }

@@ -1,7 +1,6 @@
 import type { CSSProperties } from "react";
 import type { Category, TimelineItem } from "@historizon/shared";
 
-export const LABEL_COL = 120;
 export const BAR_H = 26;
 export const PITCH = 32;
 const EMPTY_LANE_H = 56;

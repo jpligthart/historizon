@@ -61,8 +61,13 @@ if (count === 0) {
   console.log(`Auto-seeded ${SEED_ITEMS.length} items`);
 }
 
-// Background: give curated items their Wikidata ids (one request) and merge duplicates.
-void discovery.linkCuratedItems().catch((err) => console.warn("[link] failed:", (err as Error).message));
+// Background data upkeep: give curated items their Wikidata ids (one request) and merge
+// duplicates, then one-off category migrations (each runs once, recorded in app_meta).
+void discovery
+  .linkCuratedItems()
+  .then(() => discovery.splitStatesFromPeriods())
+  .then(() => discovery.cleanupStatesAndPeriods())
+  .catch((err) => console.warn("[startup] data migration failed:", (err as Error).message));
 
 app.use(
   "*",

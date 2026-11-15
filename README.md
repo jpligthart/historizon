@@ -1,6 +1,6 @@
 # Historizon
 
-Zoomable, searchable history timeline. Overlapping people, periods, wars, inventions — what happened at the same time.
+Zoomable, searchable history timeline. Overlapping people, empires, eras, wars, discoveries — what happened at the same time.
 
 English UI first, Dutch strings ready. Data lives in SQLite; short Wikipedia extracts are cached on demand.
 
@@ -48,7 +48,9 @@ Open http://127.0.0.1:8463
 
 ### Discovery while you zoom and scroll
 
-Time is cut into **tiles**, like a map: the closer you zoom in, the smaller the tiles (10, 50 or 250 years). For each tile the API fetches the 15 most notable items per category (notability = number of Wikipedia language editions, minimum 10; 25 for periods) whose start falls in it. People and periods also look back (80 / 250 years), because they start before the viewport.
+Time is cut into **tiles**, like a map: the closer you zoom in, the smaller the tiles (10, 50 or 250 years). For each tile the API fetches the 15 most notable items per category (notability = number of Wikipedia language editions, minimum 10; 25 for empires/states and eras) whose start falls in it. People, empires and eras also look back (80 / 250 years), because they start before the viewport.
+
+Categories (lanes): people · empires & states (historical countries, empires, dynasties; present-day countries are left out on purpose) · eras (periods, art movements) · events · wars · science & technology (inventions and discoveries) · artworks · buildings.
 
 - One SPARQL query per tile covers all categories; tiles are fetched once and kept for 30 days (failed tiles are retried after 10 minutes).
 - `GET /api/items?…&fetch=1` queues the missing tiles for that viewport and returns `pending`; the web app polls until it reaches 0. Tiles you scrolled past are dropped from the queue. Views wider than 1,500 years only show what is cached.

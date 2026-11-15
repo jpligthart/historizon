@@ -31,8 +31,9 @@ type Props = {
   onNow: () => void;
   /** The server is still discovering items for this range. */
   loadingMore?: boolean;
-  /** Reports how many items per category are actually drawn. */
-  onVisibleCounts?: (counts: Partial<Record<Category, number>>) => void;
+  /** Zoom presets (years in view), shown next to the navigation buttons. */
+  zoomPresets: readonly number[];
+  onZoom: (years: number) => void;
 };
 
 const SELECTED_RING = "0 0 0 2px #fff, 0 0 0 4px #0B1220";
@@ -76,7 +77,8 @@ export function Timeline({
   onPanForward,
   onNow,
   loadingMore = false,
-  onVisibleCounts,
+  zoomPresets,
+  onZoom,
 }: Props) {
   const span = Math.max(end - start, 1e-6);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -132,12 +134,6 @@ export function Timeline({
     [items, categories, start, end, now, width, labelOf, selectedId, expanded, fontEpoch],
   );
 
-  useEffect(() => {
-    if (!onVisibleCounts) return;
-    const counts: Partial<Record<Category, number>> = {};
-    for (const b of bars) counts[b.category] = (counts[b.category] ?? 0) + 1;
-    onVisibleCounts(counts);
-  }, [bars, onVisibleCounts]);
 
   const ticks = useMemo(() => tickYears(start, end), [start, end]);
   const nowFrac = (now - start) / span;
@@ -191,6 +187,24 @@ export function Timeline({
           )}
         </div>
         <div className="tl-nav">
+          <div role="group" aria-label={t(locale, "zoom")} title={t(locale, "zoom")} className="segmented zoom">
+            {zoomPresets.map((z) => {
+              const on = Math.abs(z - span) < 0.5;
+              return (
+                <button
+                  key={z}
+                  type="button"
+                  className={`seg num${on ? " on" : ""}`}
+                  aria-pressed={on}
+                  aria-label={`${z} ${t(locale, "years")}`}
+                  onClick={() => onZoom(z)}
+                >
+                  {z}
+                </button>
+              );
+            })}
+          </div>
+          <span className="tl-nav-sep" aria-hidden="true" />
           <button type="button" className="seg icon-btn" aria-label={t(locale, "earlier")} onClick={onPanBack}>
             <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M15 6l-6 6 6 6" />
@@ -253,7 +267,7 @@ export function Timeline({
             className="tl-lane"
             style={{ top: ln.top, height: ln.height, borderTop: ln.top === 0 ? "none" : undefined }}
           >
-            <div className="tl-lane-label" style={{ height: BAR_H + 12 }}>
+            <div className="tl-lane-label">
               <span className="dot" style={{ background: CATEGORY_COLORS[ln.category] }} />
               <span>{t(locale, ln.category)}</span>
             </div>

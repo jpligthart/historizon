@@ -5,12 +5,18 @@ import {
   getSearchCache,
   getUnlinkedItems,
   linkItemToWikidata,
+  hasRun,
+  markRun,
+  qidsInCategory,
+  resetTiles,
+  setCategoryForQids,
+  deleteDiscoveredItems,
   getTileState,
   setSearchCache,
   setTileState,
   upsertWikidataItems,
 } from "./db.js";
-import { fetchByQids, fetchTile, type ClassCache } from "./wikidata.js";
+import { fetchByQids, fetchTile, qidsInCategoryRoots, type ClassCache } from "./wikidata.js";
 import { resolveWikidataIds, searchWikipedia, type SearchHit, type WikiLang } from "./wikipedia.js";
 
 /**
@@ -40,6 +46,7 @@ const MAX_TILES_PER_REQUEST = 40;
  */
 const RULES: Record<Category, { minLevel: number; lookback: number }> = {
   person: { minLevel: 50, lookback: 80 },
+  state: { minLevel: 250, lookback: 250 },
   period: { minLevel: 250, lookback: 250 },
   war: { minLevel: 10, lookback: 10 },
   event: { minLevel: 10, lookback: 0 },
@@ -189,6 +196,43 @@ export class Discovery {
       if (linkItemToWikidata(this.db, id, hit.qid, hit.url)) merged++;
     }
     console.log(`[link] ${linked}/${unlinked.length} curated items linked to Wikidata, ${merged} duplicates merged`);
+  }
+
+  /**
+   * One-off: "period" used to hold empires and states too. Move those to the new "state"
+   * category (one small Wikidata query, no re-fetching), and forget the old period tiles so
+   * the period lane is refilled with eras only.
+   */
+  async splitStatesFromPeriods(): Promise<void> {
+    // v2: re-run after the period/state queries were narrowed (dynasties tagged as periods).
+    const KEY = "split-states-from-periods-v2";
+    if (hasRun(this.db, KEY)) return;
+    const periodQids = qidsInCategory(this.db, "period");
+    const states = await qidsInCategoryRoots(periodQids, "state");
+    const moved = setCategoryForQids(this.db, states, "state");
+    resetTiles(this.db, "period");
+    // Cached class→root mappings predate the new root list; rebuild them on demand.
+    this.db.exec(`DELETE FROM class_roots; DELETE FROM search_cache;`);
+    markRun(this.db, KEY);
+    console.log(`[migrate] moved ${moved} of ${periodQids.length} periods to "state"`);
+  }
+
+  /**
+   * One-off: the state and period lanes still held leftovers from the old, broader query
+   * (present-day countries, music genres, micro-movements). It is all cache, so drop the
+   * discovered items in both categories and let the tiles refill with the current queries.
+   * Curated seed items stay.
+   */
+  async cleanupStatesAndPeriods(): Promise<void> {
+    const KEY = "refetch-states-periods-v2";
+    if (hasRun(this.db, KEY)) return;
+    const removed = (["state", "period"] as const).reduce((n, c) => {
+      const count = deleteDiscoveredItems(this.db, qidsInCategory(this.db, c));
+      resetTiles(this.db, c);
+      return n + count;
+    }, 0);
+    markRun(this.db, KEY);
+    console.log(`[migrate] cleared ${removed} discovered states/periods; they refill from Wikidata`);
   }
 
   // ---------- Search ----------

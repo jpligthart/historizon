@@ -58,13 +58,24 @@ export const SPECS: Record<Category, Spec> = {
     startProps: ["P585", "P580"],
     endProps: ["P582"],
   },
-  period: {
-    // historical period, era, historical country, empire, dynasty
-    classes: ["Q11514315", "Q6428674", "Q3024240", "Q48349", "Q164950"],
-    startProps: ["P580", "P571"],
-    // Lots of obscure statelets and "periods" otherwise.
+  state: {
+    // historical country, empire, dynasty. Present-day states (Saudi Arabia, Singapore…) are
+    // left out on purpose: as bars running to today they would fill every view.
+    classes: ["Q3024240", "Q48349", "Q164950"],
+    startProps: ["P571", "P580"],
+    endProps: ["P576", "P582"],
+    // Lots of obscure statelets otherwise.
     minSitelinks: 25,
+  },
+  period: {
+    // historical period, era, art movement (Renaissance, Baroque, Romanticism…)
+    classes: ["Q11514315", "Q6428674", "Q968159"],
+    startProps: ["P580", "P571"],
     endProps: ["P582", "P576"],
+    // Keeps out niche "periods" and micro-movements.
+    minSitelinks: 25,
+    // Music genres (rap, jazz) are tagged as art movements too.
+    extraFilter: `FILTER NOT EXISTS { ?item wdt:P31 wd:Q188451 }`,
   },
   invention: {
     classes: [],
@@ -106,7 +117,8 @@ export const SPECS: Record<Category, Spec> = {
 const ROOTS: Array<{ category: Category; qids: string[] }> = [
   { category: "person", qids: ["Q5"] },
   { category: "war", qids: ["Q198", "Q350604"] },
-  { category: "period", qids: ["Q11514315", "Q3024240", "Q6428674", "Q164950", "Q968159"] },
+  { category: "state", qids: ["Q3024240", "Q48349", "Q164950"] },
+  { category: "period", qids: ["Q11514315", "Q6428674", "Q968159"] },
   { category: "artwork", qids: ["Q838948", "Q7725634", "Q2188189", "Q105543609"] },
   { category: "place", qids: ["Q41176", "Q811979", "Q839954"] },
   { category: "invention", qids: ["Q39546", "Q11019", "Q1183543"] },
@@ -170,6 +182,7 @@ function resolveEnd(category: Category, start: number, end: number | null): numb
     case "war":
       return start > NOW_YEAR - 25 ? null : start;
     case "period":
+    case "state":
       return start > NOW_YEAR - 80 ? null : start;
     default:
       return start;
@@ -436,4 +449,37 @@ export async function fetchByQids(qids: string[], cache: ClassCache): Promise<Wi
   }
   // Keep the caller's (relevance) order.
   return out.sort((a, b) => ids.indexOf(a.qid) - ids.indexOf(b.qid));
+}
+
+/**
+ * Which of the given items are (instances of subclasses of) the given category's root
+ * classes. Small queries on the official Wikidata Query Service; used for re-classifying
+ * stored items when categories change.
+ */
+export async function qidsInCategoryRoots(qids: string[], category: Category): Promise<string[]> {
+  return qidsUnderClasses(qids, ROOTS.find((r) => r.category === category)?.qids ?? []);
+}
+
+/** Which of the given items are instances of (subclasses of) any of the given classes. */
+export async function qidsUnderClasses(qids: string[], roots: string[]): Promise<string[]> {
+  if (roots.length === 0 || qids.length === 0) return [];
+  const out: string[] = [];
+  for (let i = 0; i < qids.length; i += 100) {
+    const batch = qids.slice(i, i + 100);
+    const query = `SELECT DISTINCT ?item WHERE {
+  VALUES ?item { ${batch.map((q) => `wd:${q}`).join(" ")} }
+  VALUES ?root { ${roots.map((q) => `wd:${q}`).join(" ")} }
+  ?item wdt:P31/wdt:P279* ?root
+}`;
+    const res = await politeFetch(throttles.wdqs, WDQS_URL, {
+      method: "POST",
+      headers: { Accept: "application/sparql-results+json", "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ query: PREFIXES + query }),
+      timeoutMs: 30_000,
+    });
+    if (!res.ok) throw new Error(`WDQS ${res.status}`);
+    const json = (await res.json()) as { results: { bindings: Binding[] } };
+    out.push(...json.results.bindings.map((b) => qidOf(b.item!.value)));
+  }
+  return out;
 }

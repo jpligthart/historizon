@@ -88,11 +88,13 @@ export function App() {
   const [listOpen, setListOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  // Esc closes about, then the detail panel (the search field handles its own Esc).
+  // Esc closes about, then menu, then the detail panel (search handles its own Esc).
   useEffect(() => {
-    if (!selected && !aboutOpen) return;
+    if (!selected && !aboutOpen && !menuOpen) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (e.key !== "Escape" || el?.closest("input, textarea, select")) return;
@@ -100,11 +102,25 @@ export function App() {
         setAboutOpen(false);
         return;
       }
+      if (menuOpen) {
+        setMenuOpen(false);
+        return;
+      }
       setSelected(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected, aboutOpen]);
+  }, [selected, aboutOpen, menuOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointer = (e: PointerEvent) => {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      setMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointer);
+    return () => window.removeEventListener("pointerdown", onPointer);
+  }, [menuOpen]);
 
   const clearSearch = () => {
     setQuery("");
@@ -451,30 +467,51 @@ export function App() {
             </ul>
           )}
         </div>
-        <div className="control-group">
-          <span className="control-label">{t(locale, "language")}</span>
-          <div role="group" aria-label={t(locale, "language")} className="segmented">
-            {(["nl", "en"] as const).map((lg) => (
-              <button
-                key={lg}
-                type="button"
-                className={`seg${locale === lg ? " on" : ""}`}
-                aria-pressed={locale === lg}
-                onClick={() => setLocale(lg)}
-              >
-                {lg.toUpperCase()}
-              </button>
-            ))}
-          </div>
+        <div className="menu" ref={menuRef}>
           <button
             type="button"
-            className="about-btn"
-            aria-expanded={aboutOpen}
-            aria-controls="about-panel"
-            onClick={() => setAboutOpen(true)}
+            className="menu-btn"
+            aria-expanded={menuOpen}
+            aria-controls="app-menu"
+            aria-label={t(locale, "menu")}
+            onClick={() => setMenuOpen((o) => !o)}
           >
-            {t(locale, "about")}
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
           </button>
+          {menuOpen && (
+            <div id="app-menu" className="menu-panel" role="menu">
+              <div className="menu-row">
+                <span className="menu-label">{t(locale, "language")}</span>
+                <div role="group" aria-label={t(locale, "language")} className="segmented">
+                  {(["nl", "en"] as const).map((lg) => (
+                    <button
+                      key={lg}
+                      type="button"
+                      role="menuitemradio"
+                      className={`seg${locale === lg ? " on" : ""}`}
+                      aria-checked={locale === lg}
+                      onClick={() => setLocale(lg)}
+                    >
+                      {lg.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setAboutOpen(true);
+                }}
+              >
+                {t(locale, "aboutTitle")}
+              </button>
+            </div>
+          )}
         </div>
       </header>
 

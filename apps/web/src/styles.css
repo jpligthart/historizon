@@ -108,16 +108,89 @@ input:focus-visible {
   color: var(--ink-soft);
 }
 
-.control-group {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-left: auto;
-}
-
 .control-label {
   font-size: 13px;
   color: var(--ink-soft);
+}
+
+.menu {
+  position: relative;
+  margin-left: auto;
+  flex: none;
+}
+
+.menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.menu-btn:hover,
+.menu-btn[aria-expanded="true"] {
+  border-color: #8896a8;
+  color: var(--ink);
+}
+
+.menu-btn svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.menu-panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 260px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgba(11, 18, 32, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 4px 4px 8px;
+}
+
+.menu-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.menu-item:hover {
+  background: var(--surface-soft);
 }
 
 .segmented {
@@ -158,7 +231,7 @@ input:focus-visible {
 
 /* ---------- Toolbar ---------- */
 
-/* Layout: header = brand + search (left) · language (right); row 2 = category filters;
+/* Layout: header = brand + search (left) · menu (right); row 2 = category filters;
    view controls (zoom, earlier/now/later) live on the timeline card. */
 .toolbar {
   flex: none;
@@ -177,17 +250,13 @@ input:focus-visible {
   margin-left: 12px;
 }
 
-/* Narrow: search drops to its own full-width line under brand and language. */
+/* Narrow: search drops to its own full-width line under brand and menu. */
 @media (max-width: 900px) {
   .search {
     order: 3;
     flex-basis: 100%;
     max-width: none;
     margin-left: 0;
-  }
-
-  .control-group .control-label {
-    display: none;
   }
 }
 
@@ -1151,27 +1220,6 @@ input:focus-visible {
   text-decoration: underline;
   text-underline-offset: 2px;
   white-space: nowrap;
-}
-
-.about-btn {
-  display: inline-flex;
-  align-items: center;
-  /* Match .segmented outer height (3px pad + 38px seg). */
-  height: 44px;
-  padding: 0 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: 10px;
-  background: var(--surface);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink-soft);
-  cursor: pointer;
-}
-
-.about-btn:hover,
-.about-btn[aria-expanded="true"] {
-  border-color: #8896a8;
-  color: var(--ink);
 }
 
 .about-backdrop {

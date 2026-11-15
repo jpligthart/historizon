@@ -86,3 +86,53 @@ export async function searchWikipedia(q: string, lang: WikiLang, limit = 12): Pr
     .map((p) => p.pageprops?.wikibase_item)
     .filter((x): x is string => !!x);
 }
+
+/**
+ * Resolve Wikipedia article URLs to their Wikidata ids, following redirects (articles get
+ * renamed; the old URL then redirects). Up to 50 per request.
+ */
+export async function resolveWikidataIds(
+  urls: string[],
+  lang: WikiLang = "en",
+): Promise<Map<string, { qid: string; url: string }>> {
+  const out = new Map<string, { qid: string; url: string }>();
+  for (let i = 0; i < urls.length; i += 50) {
+    const batch = urls.slice(i, i + 50);
+    const titleByUrl = new Map(batch.map((u) => [u, titleFromUrl(u)]));
+    const titles = [...new Set([...titleByUrl.values()].filter((t): t is string => !!t))];
+    if (titles.length === 0) continue;
+    const params = new URLSearchParams({
+      action: "query",
+      titles: titles.join("|"),
+      redirects: "1",
+      prop: "pageprops|info",
+      ppprop: "wikibase_item",
+      inprop: "url",
+      format: "json",
+      formatversion: "2",
+    });
+    const res = await politeFetch(throttles.wikipedia, `https://${lang}.wikipedia.org/w/api.php?${params}`, {
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) throw new Error(`Wikipedia resolve ${res.status}`);
+    const data = (await res.json()) as {
+      query?: {
+        normalized?: Array<{ from: string; to: string }>;
+        redirects?: Array<{ from: string; to: string }>;
+        pages?: Array<{ title: string; fullurl?: string; pageprops?: { wikibase_item?: string } }>;
+      };
+    };
+    const q = data.query ?? {};
+    const follow = (t: string) => {
+      const norm = q.normalized?.find((n) => n.from === t)?.to ?? t;
+      return q.redirects?.find((r) => r.from === norm)?.to ?? norm;
+    };
+    for (const [url, title] of titleByUrl) {
+      if (!title) continue;
+      const page = q.pages?.find((p) => p.title === follow(title));
+      const qid = page?.pageprops?.wikibase_item;
+      if (qid) out.set(url, { qid, url: page.fullurl ?? url });
+    }
+  }
+  return out;
+}

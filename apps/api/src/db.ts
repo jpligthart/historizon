@@ -140,7 +140,7 @@ export function upsertItem(
     )
     ON CONFLICT(id) DO UPDATE SET
       title = excluded.title,
-      title_nl = excluded.title_nl,
+      title_nl = COALESCE(excluded.title_nl, items.title_nl),
       category = excluded.category,
       start_year = excluded.start_year,
       end_year = excluded.end_year,
@@ -435,4 +435,48 @@ export function getMeta(database: DatabaseSync) {
     maxYear: row.max_year ?? new Date().getFullYear(),
     count: row.count,
   };
+}
+
+// ---------- Linking curated items to Wikidata ----------
+
+/** Curated items with a Wikipedia article but no Wikidata id yet. */
+export function getUnlinkedItems(database: DatabaseSync): Array<{ id: string; wikipedia_url: string }> {
+  return database
+    .prepare(`SELECT id, wikipedia_url FROM items WHERE wikidata_id IS NULL AND wikipedia_url IS NOT NULL`)
+    .all() as Array<{ id: string; wikipedia_url: string }>;
+}
+
+/**
+ * Give a curated item its Wikidata id. If that id was already discovered as a separate
+ * item (a duplicate), merge it in: the curated item keeps its category, dates and titles,
+ * and takes over notability and any missing Dutch title/link. Returns true if merged.
+ */
+export function linkItemToWikidata(database: DatabaseSync, id: string, qid: string, canonicalUrl: string): boolean {
+  database.exec("BEGIN");
+  try {
+    const dup = database.prepare(`SELECT * FROM items WHERE wikidata_id = ? AND id != ?`).get(qid, id) as
+      | ItemRow
+      | undefined;
+    if (dup) {
+      database.prepare(`DELETE FROM items_fts WHERE id = ?`).run(dup.id);
+      database.prepare(`DELETE FROM items WHERE id = ?`).run(dup.id);
+    }
+    database
+      .prepare(
+        `UPDATE items SET
+           wikidata_id = ?,
+           wikipedia_url = ?,
+           importance = MAX(COALESCE(importance, 0), ?),
+           title_nl = COALESCE(title_nl, ?),
+           wikipedia_url_nl = COALESCE(wikipedia_url_nl, ?)
+         WHERE id = ?`,
+      )
+      .run(qid, normalizeWikiUrl(canonicalUrl), dup?.importance ?? 0, dup?.title_nl ?? null, dup?.wikipedia_url_nl ?? null, id);
+    database.exec("COMMIT");
+    refreshFts(database, id);
+    return !!dup;
+  } catch (err) {
+    database.exec("ROLLBACK");
+    throw err;
+  }
 }

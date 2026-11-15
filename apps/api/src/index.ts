@@ -61,6 +61,9 @@ if (count === 0) {
   console.log(`Auto-seeded ${SEED_ITEMS.length} items`);
 }
 
+// Background: give curated items their Wikidata ids (one request) and merge duplicates.
+void discovery.linkCuratedItems().catch((err) => console.warn("[link] failed:", (err as Error).message));
+
 app.use(
   "*",
   cors({

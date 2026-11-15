@@ -3,13 +3,15 @@ import type { DatabaseSync } from "node:sqlite";
 import {
   createClassCache,
   getSearchCache,
+  getUnlinkedItems,
+  linkItemToWikidata,
   getTileState,
   setSearchCache,
   setTileState,
   upsertWikidataItems,
 } from "./db.js";
 import { fetchByQids, fetchTile, type ClassCache } from "./wikidata.js";
-import { searchWikipedia, type WikiLang } from "./wikipedia.js";
+import { resolveWikidataIds, searchWikipedia, type WikiLang } from "./wikipedia.js";
 
 /**
  * Viewport-driven discovery, like map tiles. Time is cut into tiles whose size depends on
@@ -167,6 +169,26 @@ export class Discovery {
     for (let s = from; s < to; s += windowSpan) {
       for (const job of this.plan(s, Math.min(s + windowSpan, to))) await this.runJob(job);
     }
+  }
+
+  /**
+   * Link curated (seed) items to their Wikidata ids via their Wikipedia URL, following
+   * redirects, and merge duplicates that discovery already created. Without an id, dedup
+   * only works when URL or title match exactly, which breaks once an article is renamed.
+   */
+  async linkCuratedItems(): Promise<void> {
+    const unlinked = getUnlinkedItems(this.db);
+    if (unlinked.length === 0) return;
+    const resolved = await resolveWikidataIds(unlinked.map((u) => u.wikipedia_url));
+    let linked = 0;
+    let merged = 0;
+    for (const { id, wikipedia_url } of unlinked) {
+      const hit = resolved.get(wikipedia_url);
+      if (!hit) continue;
+      linked++;
+      if (linkItemToWikidata(this.db, id, hit.qid, hit.url)) merged++;
+    }
+    console.log(`[link] ${linked}/${unlinked.length} curated items linked to Wikidata, ${merged} duplicates merged`);
   }
 
   // ---------- Search ----------

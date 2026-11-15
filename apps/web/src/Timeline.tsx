@@ -267,6 +267,7 @@ export function Timeline({
         </div>
       </div>
 
+      <div className="tl-scroll">
       <div
         ref={bodyRef}
         className={`tl-body${dragging ? " dragging" : ""}`}
@@ -402,6 +403,7 @@ export function Timeline({
           })}
           {bars.length === 0 && <div className="tl-empty">{t(locale, "noResults")}</div>}
         </div>
+      </div>
       </div>
     </section>
   );

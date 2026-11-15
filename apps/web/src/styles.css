@@ -19,8 +19,10 @@
 }
 
 html,
-body {
+body,
+#root {
   margin: 0;
+  height: 100%;
 }
 
 body {
@@ -28,6 +30,7 @@ body {
   color: var(--ink);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
+  overflow: hidden;
 }
 
 button {
@@ -50,14 +53,17 @@ input:focus-visible {
 }
 
 .app {
-  min-height: 100vh;
+  height: 100%;
+  max-height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 /* ---------- Header ---------- */
 
 .top {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -144,6 +150,7 @@ input:focus-visible {
 /* Layout: header = brand · search · language; row 2 = category filters;
    view controls (zoom, earlier/now/later) live on the timeline card. */
 .toolbar {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -382,13 +389,16 @@ input:focus-visible {
 /* ---------- Main layout ---------- */
 
 /* The detail panel only exists while something is selected; the timeline gets the full
-   width otherwise. */
+   width otherwise. Each column scrolls on its own; the page itself does not. */
 .main {
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  align-items: start;
+  align-items: stretch;
   gap: 20px;
-  padding: 0 28px 28px;
+  padding: 0 28px 16px;
+  overflow: hidden;
 }
 
 .main.with-detail {
@@ -399,6 +409,10 @@ input:focus-visible {
 
 .tl-card {
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -406,6 +420,7 @@ input:focus-visible {
 }
 
 .tl-head {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -489,6 +504,7 @@ input:focus-visible {
 
 .tl-axis {
   position: relative;
+  flex: none;
   height: 34px;
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
@@ -541,6 +557,15 @@ input:focus-visible {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.tl-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .tl-body {
@@ -683,11 +708,11 @@ input:focus-visible {
 /* ---------- Detail panel ---------- */
 
 .detail {
-  position: sticky;
-  top: 16px;
-  max-height: calc(100vh - 32px);
+  min-height: 0;
+  height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -753,6 +778,7 @@ input:focus-visible {
 @media (max-width: 1100px) {
   .main.with-detail {
     grid-template-columns: minmax(0, 1fr);
+    /* Room under the timeline for the fixed bottom sheet. */
     padding-bottom: 62vh;
   }
 
@@ -763,6 +789,7 @@ input:focus-visible {
     right: 0;
     bottom: 0;
     top: auto;
+    height: auto;
     max-height: 60vh;
     border-radius: 16px 16px 0 0;
     border-bottom: 0;
@@ -1062,12 +1089,12 @@ input:focus-visible {
 }
 
 .footer {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 8px 20px;
-  margin-top: auto;
-  padding: 0 28px 24px;
+  padding: 0 28px 16px;
   font-size: 12px;
   color: var(--ink-soft);
 }

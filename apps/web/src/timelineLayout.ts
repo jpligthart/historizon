@@ -65,17 +65,20 @@ export function layoutTimeline(opts: {
   now: number;
   width: number;
   selectedId?: string | null;
+  /** Nederland-bril: rank items with a Dutch connection this many times higher. */
+  nlBoost?: number;
   /** Categories shown in full instead of capped at MAX_ROWS. */
   expanded?: ReadonlySet<Category>;
   labelOf: (item: TimelineItem) => string;
   measure: (text: string) => number;
 }): { lanes: Lane[]; bars: Bar[]; bodyHeight: number } {
-  const { items, categories, start, end, now, labelOf, measure, selectedId, expanded } = opts;
+  const { items, categories, start, end, now, labelOf, measure, selectedId, expanded, nlBoost = 1 } = opts;
   const span = Math.max(end - start, 1e-6);
   const W = Math.max(opts.width, 1);
   const lanes: Lane[] = [];
   const bars: Bar[] = [];
-  const rank = (i: TimelineItem) => (i.id === selectedId ? Infinity : (i.importance ?? DEFAULT_IMPORTANCE));
+  const rank = (i: TimelineItem) =>
+    i.id === selectedId ? Infinity : (i.importance ?? DEFAULT_IMPORTANCE) * (i.nlLink ? nlBoost : 1);
   let y = 0;
 
   for (const category of categories) {

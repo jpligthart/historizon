@@ -33,6 +33,8 @@ type Props = {
   loadingMore?: boolean;
   /** Zoom presets (years in view), shown next to the navigation buttons. */
   zoomPresets: readonly number[];
+  /** Nederland-bril: rank Dutch items this many times higher (1 = off). */
+  nlBoost?: number;
   onZoom: (years: number) => void;
 };
 
@@ -78,6 +80,7 @@ export function Timeline({
   onNow,
   loadingMore = false,
   zoomPresets,
+  nlBoost = 1,
   onZoom,
 }: Props) {
   const span = Math.max(end - start, 1e-6);
@@ -128,10 +131,11 @@ export function Timeline({
         labelOf,
         selectedId,
         expanded,
+        nlBoost,
         measure: measureLabel,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items, categories, start, end, now, width, labelOf, selectedId, expanded, fontEpoch],
+    [items, categories, start, end, now, width, labelOf, selectedId, expanded, nlBoost, fontEpoch],
   );
 
 

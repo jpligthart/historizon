@@ -2,7 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { Category, TimelineItem } from "@historizon/shared";
-import { CATEGORIES } from "@historizon/shared";
+import { CATEGORIES, NL_BOOST } from "@historizon/shared";
 import type { ClassCache, WikidataItem } from "./wikidata.js";
 
 export type ItemRow = {
@@ -19,6 +19,7 @@ export type ItemRow = {
   wikidata_id: string | null;
   extract_cached_at: string | null;
   importance: number | null;
+  nl_link: number | null;
 };
 
 let db: DatabaseSync | null = null;
@@ -40,7 +41,7 @@ export function openDb(): DatabaseSync {
 
 const ITEM_COLUMNS = [
   "id", "title", "title_nl", "category", "start_year", "end_year", "description", "description_nl",
-  "wikipedia_url", "wikipedia_url_nl", "wikidata_id", "extract_cached_at", "importance",
+  "wikipedia_url", "wikipedia_url_nl", "wikidata_id", "extract_cached_at", "importance", "nl_link",
 ];
 
 function itemsTableSql(name: string): string {
@@ -58,7 +59,8 @@ function itemsTableSql(name: string): string {
       wikipedia_url_nl TEXT,
       wikidata_id TEXT,
       extract_cached_at TEXT,
-      importance INTEGER
+      importance INTEGER,
+      nl_link INTEGER
     );`;
 }
 
@@ -142,6 +144,10 @@ function migrate(database: DatabaseSync): void {
   const columns = new Set(
     (database.prepare(`PRAGMA table_info(items)`).all() as Array<{ name: string }>).map((c) => c.name),
   );
+  if (!columns.has("nl_link")) {
+    // Dutch connection for the "Nederland-bril" (1/0; NULL = not checked yet).
+    database.exec(`ALTER TABLE items ADD COLUMN nl_link INTEGER`);
+  }
   if (!columns.has("importance")) {
     // Notability: number of Wikipedia language editions (Wikidata sitelinks).
     database.exec(`ALTER TABLE items ADD COLUMN importance INTEGER`);
@@ -164,12 +170,13 @@ export function rowToItem(row: ItemRow): TimelineItem {
     wikidataId: row.wikidata_id,
     descriptionFromWikipedia: row.extract_cached_at !== null,
     importance: row.importance,
+    nlLink: row.nl_link === null ? null : row.nl_link === 1,
   };
 }
 
 export function upsertItem(
   database: DatabaseSync,
-  item: Omit<TimelineItem, "description" | "descriptionNl" | "descriptionFromWikipedia" | "importance"> & {
+  item: Omit<TimelineItem, "description" | "descriptionNl" | "descriptionFromWikipedia" | "importance" | "nlLink"> & {
     description?: string | null;
     descriptionNl?: string | null;
   },
@@ -236,6 +243,8 @@ export function queryItems(
     limit?: number;
     /** Max items per category, most notable first. */
     perCategory?: number;
+    /** "nl": rank items with a Dutch connection NL_BOOST times higher. */
+    lens?: "nl" | null;
   },
 ): TimelineItem[] {
   const limit = Math.min(Math.max(opts.limit ?? 500, 1), 2000);
@@ -275,7 +284,9 @@ export function queryItems(
     SELECT * FROM (
       SELECT i.*, ROW_NUMBER() OVER (
         PARTITION BY i.category
-        ORDER BY COALESCE(i.importance, ${SEED_IMPORTANCE}) DESC, i.start_year ASC
+        ORDER BY COALESCE(i.importance, ${SEED_IMPORTANCE})
+          * ${opts.lens === "nl" ? `(CASE WHEN i.nl_link = 1 THEN ${NL_BOOST} ELSE 1 END)` : "1"} DESC,
+          i.start_year ASC
       ) AS rn
       FROM items i
       WHERE i.start_year <= ?
@@ -294,6 +305,31 @@ export function queryItems(
 
 /** Curated seed items have no sitelink count; rank them as fairly notable. */
 const SEED_IMPORTANCE = 120;
+
+
+// ---------- Dutch connection (Nederland-bril) ----------
+
+/** Items whose Dutch connection hasn't been checked yet. */
+export function getUncheckedNlQids(database: DatabaseSync, limit: number): string[] {
+  return (
+    database
+      .prepare(`SELECT wikidata_id FROM items WHERE nl_link IS NULL AND wikidata_id IS NOT NULL LIMIT ?`)
+      .all(limit) as Array<{ wikidata_id: string }>
+  ).map((r) => r.wikidata_id);
+}
+
+/** Record the check: ids in `dutch` get 1, the other checked ids 0. */
+export function setNlLinks(database: DatabaseSync, checked: string[], dutch: Set<string>): void {
+  const stmt = database.prepare(`UPDATE items SET nl_link = ? WHERE wikidata_id = ?`);
+  database.exec("BEGIN");
+  try {
+    for (const q of checked) stmt.run(dutch.has(q) ? 1 : 0, q);
+    database.exec("COMMIT");
+  } catch (err) {
+    database.exec("ROLLBACK");
+    throw err;
+  }
+}
 
 export function getItemsByWikidataIds(database: DatabaseSync, qids: string[]): TimelineItem[] {
   if (qids.length === 0) return [];
@@ -346,9 +382,14 @@ export function upsertWikidataItems(database: DatabaseSync, items: WikidataItem[
         (findByQid.get(it.qid) as ItemRow | undefined) ??
         (url ? (findByUrl.get(url, it.wikipediaUrl ?? url) as ItemRow | undefined) : undefined) ??
         (findByTitle.get(it.category, it.startYear, it.title, it.titleNl ?? it.title) as ItemRow | undefined);
+      // Items from a Dutch tile are known to have a Dutch connection.
+      const markNl = () => {
+        if (it.nlLink) database.prepare(`UPDATE items SET nl_link = 1 WHERE wikidata_id = ?`).run(it.qid);
+      };
       if (existing) {
         enrich.run(it.qid, it.titleNl, url, it.wikipediaUrlNl, it.sitelinks, it.category, existing.id);
         if (!existing.title_nl && it.titleNl) refreshFts(database, existing.id);
+        markNl();
         continue;
       }
       upsertItem(database, {
@@ -363,6 +404,7 @@ export function upsertWikidataItems(database: DatabaseSync, items: WikidataItem[
         wikidataId: it.qid,
       });
       database.prepare(`UPDATE items SET importance = ? WHERE id = ?`).run(it.sitelinks, `wd-${it.qid}`);
+      markNl();
       inserted++;
     }
     database.exec("COMMIT");

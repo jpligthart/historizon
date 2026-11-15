@@ -17,6 +17,8 @@ export async function fetchItems(opts: {
   perCategory?: number;
   /** Ask the server to discover more items for this range on Wikidata. */
   discover?: boolean;
+  /** "nl": Nederland-bril (Dutch items rank higher; Dutch tiles are fetched too). */
+  lens?: "nl" | null;
   signal?: AbortSignal;
 }): Promise<{ items: TimelineItem[]; pending: number }> {
   const params = new URLSearchParams({
@@ -28,6 +30,7 @@ export async function fetchItems(opts: {
   if (opts.limit) params.set("limit", String(opts.limit));
   if (opts.perCategory) params.set("perCategory", String(opts.perCategory));
   if (opts.discover) params.set("fetch", "1");
+  if (opts.lens) params.set("lens", opts.lens);
 
   const res = await fetch(`/api/items?${params}`, { signal: opts.signal });
   if (!res.ok) throw new Error("Failed to load items");

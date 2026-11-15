@@ -28,7 +28,42 @@ export type WikidataItem = {
   sitelinks: number;
   wikipediaUrl: string | null;
   wikipediaUrlNl: string | null;
+  /** Known to have a Dutch connection (set for items from a Dutch tile). */
+  nlLink?: boolean;
 };
+
+// ---------- Dutch connection (Nederland-bril) ----------
+
+/**
+ * The Netherlands and its historical predecessors, so the Golden Age counts too:
+ * Netherlands, Kingdom of the Netherlands, Dutch Republic, Batavian Republic, Kingdom of
+ * Holland, Habsburg Netherlands, Seventeen Provinces, Burgundian Netherlands, United
+ * Kingdom of the Netherlands.
+ */
+const NL_POLITIES = ["Q55", "Q29999", "Q170072", "Q188553", "Q212278", "Q1031430", "Q330533", "Q157109", "Q15864"];
+
+/** Dutch tiles reach further down: Dutch topics have far fewer language editions. */
+const NL_MIN_SITELINKS = 5;
+
+const NL_VALUES = NL_POLITIES.map((q) => `wd:${q}`).join(" ");
+
+/**
+ * SPARQL pattern binding ?item only if it has a Dutch connection: Dutch nationality, Dutch
+ * origin, the Netherlands took part (wars), made by a Dutch maker, itself a Dutch polity,
+ * or located ONLY in the Netherlands (a pandemic or protest wave that also reached the
+ * Netherlands doesn't count). `withBirthplace` adds "born in the Netherlands": accurate but
+ * heavy, so only used when checking known items, not when scanning tiles.
+ */
+function nlPattern(withBirthplace: boolean): string {
+  return `
+        VALUES ?nlc { ${NL_VALUES} }
+        { ?item wdt:P27|wdt:P495|wdt:P710 ?nlc }
+        UNION { ?item wdt:P17 ?nlc .
+                FILTER NOT EXISTS { ?item wdt:P17 ?otherCountry . FILTER(?otherCountry NOT IN (${NL_POLITIES.map((q) => `wd:${q}`).join(", ")})) } }
+        UNION { ?item wdt:P170/wdt:P27 ?nlc }
+        ${withBirthplace ? "UNION { ?item wdt:P19/wdt:P17 ?nlc }" : ""}
+        UNION { VALUES ?item { ${NL_VALUES} } }`;
+}
 
 type Spec = {
   /** Direct P31 classes for tile queries (fast and low-noise, unlike subclass paths). */
@@ -228,10 +263,14 @@ export async function fetchTile(
   fromYear: number,
   toYear: number,
   limit = 15,
+  /** Only items with a Dutch connection, with a lower notability floor. */
+  opts: { nlOnly?: boolean } = {},
 ): Promise<WikidataItem[]> {
   if (categories.length === 0) return [];
+  const nlOnly = !!opts.nlOnly;
   const branch = (category: Category) => {
     const spec = SPECS[category];
+    const minSitelinks = nlOnly ? NL_MIN_SITELINKS : (spec.minSitelinks ?? MIN_SITELINKS);
     const classClause = spec.classes.length
       ? `VALUES ?cls { ${spec.classes.map((c) => `wd:${c}`).join(" ")} }\n        ?item wdt:P31 ?cls .`
       : "";
@@ -245,10 +284,11 @@ export async function fetchTile(
       SELECT ?item (MAX(?sl0) AS ?sl) (MIN(?s0) AS ?start) WHERE {
         ${classClause}
         ?item wikibase:sitelinks ?sl0 .
-        FILTER(?sl0 >= ${spec.minSitelinks ?? MIN_SITELINKS})
+        FILTER(?sl0 >= ${minSitelinks})
         ${startClause}
         FILTER(?s0 >= ${yearLiteral(fromYear)} && ?s0 < ${yearLiteral(toYear)})
         ${spec.extraFilter ?? ""}
+        ${nlOnly ? nlPattern(false) : ""}
       }
       GROUP BY ?item
       ORDER BY DESC(?sl)
@@ -279,7 +319,8 @@ GROUP BY ?item ?cat ?sl ?start`;
         nl: r.nl?.value,
       }),
     )
-    .filter((x): x is WikidataItem => x !== null);
+    .filter((x): x is WikidataItem => x !== null)
+    .map((x) => (nlOnly ? { ...x, nlLink: true } : x));
 }
 
 const DATE_PROPS = {
@@ -480,6 +521,32 @@ export async function qidsUnderClasses(qids: string[], roots: string[]): Promise
     if (!res.ok) throw new Error(`WDQS ${res.status}`);
     const json = (await res.json()) as { results: { bindings: Binding[] } };
     out.push(...json.results.bindings.map((b) => qidOf(b.item!.value)));
+  }
+  return out;
+}
+
+/**
+ * Which of the given items have a Dutch connection. Small queries (bound items) on the
+ * official Wikidata Query Service; used to flag items that came in via global tiles,
+ * search or the seed.
+ */
+export async function qidsWithNlLink(qids: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (let i = 0; i < qids.length; i += 100) {
+    const batch = qids.slice(i, i + 100);
+    const query = `SELECT DISTINCT ?item WHERE {
+        VALUES ?item { ${batch.map((q) => `wd:${q}`).join(" ")} }
+        ${nlPattern(true)}
+}`;
+    const res = await politeFetch(throttles.wdqs, WDQS_URL, {
+      method: "POST",
+      headers: { Accept: "application/sparql-results+json", "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ query: PREFIXES + query }),
+      timeoutMs: 30_000,
+    });
+    if (!res.ok) throw new Error(`WDQS ${res.status}`);
+    const json = (await res.json()) as { results: { bindings: Binding[] } };
+    for (const b of json.results.bindings) out.add(qidOf(b.item!.value));
   }
   return out;
 }

@@ -1,5 +1,6 @@
 services:
   api:
+    container_name: historizon-api
     image: ${IMAGE_REGISTRY}/historizon-api:${IMAGE_TAG:-latest}
     pull_policy: always
     restart: unless-stopped
@@ -9,7 +10,7 @@ services:
       PORT: "3000"
       SQLITE_PATH: /data/historizon.sqlite
     volumes:
-      - historizon-data:/data
+      - ./data:/data
     expose:
       - "3000"
     healthcheck:
@@ -26,6 +27,7 @@ services:
       start_period: 10s
 
   web:
+    container_name: historizon-web
     image: ${IMAGE_REGISTRY}/historizon-web:${IMAGE_TAG:-latest}
     pull_policy: always
     restart: unless-stopped
@@ -34,6 +36,3 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:${WEB_HOST_PORT:-8463}:8080"
-
-volumes:
-  historizon-data:

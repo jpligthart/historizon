@@ -61,6 +61,12 @@ Categories (lanes): people · empires & states (historical countries, empires, d
 
 Search queries Wikipedia (in the UI language), resolves the hits to Wikidata, classifies them into categories via their classes, stores them, and caches the result for 7 days. Local full-text matches are added after the Wikipedia hits. If Wikipedia rate-limits us, search returns local results immediately instead of waiting.
 
+### Nederland-bril (Dutch lens)
+
+A toggle that gives items with a Dutch connection priority (×2.5 in the ranking) and also fetches Dutch-only tiles with a lower notability floor (5 language editions instead of 10/25), because Dutch topics are far less internationally linked. It is on by default in the Dutch UI and off in English until the user chooses; the choice is remembered in the browser.
+
+"Dutch connection" (Wikidata): Dutch nationality, Dutch origin, the Netherlands took part (wars), made by a Dutch maker, born in the Netherlands, located only in the Netherlands, or one of the Dutch polities themselves (Netherlands, Dutch Republic, Batavian Republic, Kingdom of Holland, Habsburg/Burgundian Netherlands, Seventeen Provinces, United Kingdom of the Netherlands). Stored items are checked in the background, 100 per query on the Wikidata Query Service.
+
 ### Upstream services and politeness
 
 | Service | Used for | Pace |

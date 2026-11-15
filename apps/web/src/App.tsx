@@ -2,6 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, ty
 import {
   CATEGORIES,
   DEFAULT_ZOOM_YEARS,
+  NL_BOOST,
   ZOOM_PRESETS_YEARS,
   type Category,
   type TimelineItem,
@@ -34,11 +35,39 @@ const PER_CATEGORY = 25;
 const POLL_MS = 1500;
 /** Search results shown in the dropdown. */
 const MAX_RESULTS = 8;
+
+const LENS_KEY = "historizon.nlLens";
+
+/** Stored Nederland-bril choice; null = never chosen (then it follows the language). */
+function readLensPref(): boolean | null {
+  try {
+    const v = localStorage.getItem(LENS_KEY);
+    return v === null ? null : v === "1";
+  } catch {
+    return null;
+  }
+}
+
+function writeLensPref(on: boolean): void {
+  try {
+    localStorage.setItem(LENS_KEY, on ? "1" : "0");
+  } catch {
+    // Storage blocked (private mode): the choice just isn't remembered.
+  }
+}
 const MAX_POLLS = 40;
 const CATEGORY_ORDER = Object.fromEntries(CATEGORIES.map((c, i) => [c, i])) as Record<Category, number>;
 
 export function App() {
   const [locale, setLocale] = useState<Locale>("nl");
+  // Nederland-bril: follows the language (on for NL, off for EN) until the user picks.
+  const [lensPref, setLensPref] = useState<boolean | null>(readLensPref);
+  const lensOn = lensPref ?? locale === "nl";
+  const toggleLens = () => {
+    const next = !lensOn;
+    setLensPref(next);
+    writeLensPref(next);
+  };
   const [meta, setMeta] = useState<TimelineMeta | null>(null);
   const [view, setView] = useState({ span: DEFAULT_ZOOM_YEARS, end: NOW + DEFAULT_ZOOM_YEARS * RIGHT_PAD });
   const { span, end } = view;
@@ -103,7 +132,7 @@ export function App() {
     let timer = 0;
     let polls = 0;
     const load = () => {
-      fetchItems({ from: start, to: end, limit: 2000, perCategory: PER_CATEGORY, discover: true, signal: ctrl.signal })
+      fetchItems({ from: start, to: end, limit: 2000, perCategory: PER_CATEGORY, discover: true, lens: lensOn ? "nl" : null, signal: ctrl.signal })
         .then(({ items: next, pending }) => {
           setItems(next);
           const more = pending > 0 && polls < MAX_POLLS;
@@ -122,7 +151,7 @@ export function App() {
       ctrl.abort();
       window.clearTimeout(timer);
     };
-  }, [start, end, refreshTick]);
+  }, [start, end, refreshTick, lensOn]);
 
   // Search: Wikipedia (via the API, cached server-side) + local database, relevance order.
   useEffect(() => {
@@ -175,7 +204,7 @@ export function App() {
       return;
     }
     let cancelled = false;
-    fetchItems({ from: selected.startYear, to: selected.endYear ?? NOW_YEAR, limit: 2000, perCategory: 15 })
+    fetchItems({ from: selected.startYear, to: selected.endYear ?? NOW_YEAR, limit: 2000, perCategory: 15, lens: lensOn ? "nl" : null })
       .then(({ items: next }) => {
         if (!cancelled) setConcurrentAll(next);
       })
@@ -183,7 +212,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [selected?.id, selected?.startYear, selected?.endYear]);
+  }, [selected?.id, selected?.startYear, selected?.endYear, lensOn]);
 
   const labelOf = useCallback(
     (item: TimelineItem) => (locale === "nl" && item.titleNl ? item.titleNl : item.title),
@@ -450,6 +479,19 @@ export function App() {
             );
           })}
         </div>
+        <button
+          type="button"
+          className={`lens-toggle${lensOn ? " on" : ""}`}
+          role="switch"
+          aria-checked={lensOn}
+          onClick={toggleLens}
+          title={t(locale, "nlLensHint")}
+        >
+          <span className="lens-track" aria-hidden="true">
+            <span className="lens-knob" />
+          </span>
+          {t(locale, "nlLens")}
+        </button>
       </div>
 
       <main className={`main${selected ? " with-detail" : ""}`}>
@@ -470,6 +512,7 @@ export function App() {
           onPanForward={() => panBy(1)}
           onNow={goNow}
           zoomPresets={ZOOM_PRESETS_YEARS}
+          nlBoost={lensOn ? NL_BOOST : 1}
           onZoom={setZoom}
           loadingMore={loadingMore}
         />

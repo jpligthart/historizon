@@ -67,6 +67,8 @@ void discovery
   .linkCuratedItems()
   .then(() => discovery.splitStatesFromPeriods())
   .then(() => discovery.cleanupStatesAndPeriods())
+  .then(() => discovery.recheckNlLinks())
+  .then(() => discovery.scheduleNlCheck())
   .catch((err) => console.warn("[startup] data migration failed:", (err as Error).message));
 
 app.use(
@@ -104,8 +106,10 @@ app.get("/api/items", (c) => {
   const perCategory = c.req.query("perCategory") ? Number(c.req.query("perCategory")) : undefined;
 
   // fetch=1: also discover more items for this viewport in the background.
-  const pending = c.req.query("fetch") === "1" ? discovery.ensure(from, to, categories) : 0;
-  const items = queryItems(database, { from, to, categories, q, limit, perCategory });
+  // lens=nl: Nederland-bril (Dutch items rank higher; Dutch tiles are fetched too).
+  const lens = c.req.query("lens") === "nl" ? "nl" : null;
+  const pending = c.req.query("fetch") === "1" ? discovery.ensure(from, to, categories, lens) : 0;
+  const items = queryItems(database, { from, to, categories, q, limit, perCategory, lens });
   return c.json({ items, from, to, count: items.length, pending });
 });
 

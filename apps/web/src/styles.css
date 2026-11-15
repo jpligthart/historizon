@@ -1063,3 +1063,69 @@ input:focus-visible {
   border-color: #8896a8;
   color: var(--ink);
 }
+
+/* ---------- Nederland-bril toggle ---------- */
+
+.lens-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  margin-left: auto;
+  padding: 0 14px 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.lens-toggle:hover {
+  border-color: #8896a8;
+  color: var(--ink);
+}
+
+.lens-toggle.on {
+  border-color: #e8590c;
+  background: #fff4ec;
+  color: #9a3412;
+}
+
+.lens-track {
+  position: relative;
+  width: 30px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--line-strong);
+  transition: background 150ms ease;
+}
+
+.lens-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(11, 18, 32, 0.25);
+  transition: transform 150ms ease;
+}
+
+.lens-toggle.on .lens-track {
+  background: #e8590c;
+}
+
+.lens-toggle.on .lens-knob {
+  transform: translateX(12px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lens-track,
+  .lens-knob {
+    transition: none;
+  }
+}

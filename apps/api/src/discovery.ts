@@ -14,9 +14,11 @@ import {
   getTileState,
   setSearchCache,
   setTileState,
+  getUncheckedNlQids,
+  setNlLinks,
   upsertWikidataItems,
 } from "./db.js";
-import { fetchByQids, fetchTile, qidsInCategoryRoots, type ClassCache } from "./wikidata.js";
+import { fetchByQids, fetchTile, qidsInCategoryRoots, qidsWithNlLink, type ClassCache } from "./wikidata.js";
 import { resolveWikidataIds, searchWikipedia, type SearchHit, type WikiLang } from "./wikipedia.js";
 
 /**
@@ -55,15 +57,22 @@ const RULES: Record<Category, { minLevel: number; lookback: number }> = {
   place: { minLevel: 10, lookback: 0 },
 };
 
-type Job = { level: number; start: number; categories: Set<Category>; wantedAt: number };
+/** A tile group to fetch. `nl`: the Nederland-bril variant (Dutch items only, lower floor). */
+type Job = { level: number; start: number; nl: boolean; categories: Set<Category>; wantedAt: number };
 
-const tileKey = (c: Category, level: number, start: number) => `${c}:${level}:${start}`;
-const groupKey = (level: number, start: number) => `${level}:${start}`;
+const tileKey = (c: Category, level: number, start: number, nl: boolean) =>
+  `${nl ? "nl/" : ""}${c}:${level}:${start}`;
+const groupKey = (level: number, start: number, nl: boolean) => `${nl ? "nl/" : ""}${level}:${start}`;
+const jobKey = (j: Job) => groupKey(j.level, j.start, j.nl);
+/** Dutch tiles take fewer per category: they complement the global ones. */
+const PER_NL_TILE = 10;
 
 function levelForSpan(span: number): number | null {
   if (span > MAX_SPAN_FOR_FETCH) return null;
   return LEVELS.find((l) => l >= span / 2) ?? LEVELS[LEVELS.length - 1];
 }
+
+export type Lens = "nl" | null;
 
 export class Discovery {
   private queue = new Map<string, Job>();
@@ -82,50 +91,60 @@ export class Discovery {
     return st.status === "ok" ? age < TILE_TTL_MS : age < FAILED_RETRY_MS;
   }
 
-  /** Tiles (grouped per level+start) needed for a viewport. */
-  plan(from: number, to: number, categories: readonly Category[] = CATEGORIES): Job[] {
+  /**
+   * Tiles (grouped per level+start) needed for a viewport. With the Nederland-bril on, the
+   * Dutch variants come first, so Dutch items appear before the global fill-up.
+   */
+  plan(from: number, to: number, categories: readonly Category[] = CATEGORIES, lens: Lens = null): Job[] {
     const base = levelForSpan(to - from);
     if (base === null) return [];
-    const groups = new Map<string, Job>();
-    for (const c of categories) {
-      const { minLevel, lookback } = RULES[c];
-      const level = Math.max(base, minLevel);
-      const first = Math.max(MIN_YEAR, Math.floor((from - lookback) / level) * level);
-      for (let s = first; s < to && s <= NOW_YEAR; s += level) {
-        const k = groupKey(level, s);
-        const job = groups.get(k) ?? { level, start: s, categories: new Set<Category>(), wantedAt: 0 };
-        job.categories.add(c);
-        groups.set(k, job);
+    const variants = lens === "nl" ? [true, false] : [false];
+    const jobs: Job[] = [];
+    for (const nl of variants) {
+      const groups = new Map<string, Job>();
+      for (const c of categories) {
+        const { minLevel, lookback } = RULES[c];
+        const level = Math.max(base, minLevel);
+        const first = Math.max(MIN_YEAR, Math.floor((from - lookback) / level) * level);
+        for (let s = first; s < to && s <= NOW_YEAR; s += level) {
+          const k = groupKey(level, s, nl);
+          const job = groups.get(k) ?? { level, start: s, nl, categories: new Set<Category>(), wantedAt: 0 };
+          job.categories.add(c);
+          groups.set(k, job);
+        }
       }
+      // Tiles inside the viewport first, then the look-back ones.
+      jobs.push(
+        ...[...groups.values()].sort(
+          (a, b) => Number(a.start + a.level <= from) - Number(b.start + b.level <= from) || b.start - a.start,
+        ),
+      );
     }
-    // Tiles inside the viewport first, then the look-back ones.
-    return [...groups.values()]
-      .sort((a, b) => Number(a.start + a.level <= from) - Number(b.start + b.level <= from) || b.start - a.start)
-      .slice(0, MAX_TILES_PER_REQUEST);
+    return jobs.slice(0, MAX_TILES_PER_REQUEST);
   }
 
   /**
    * Make sure a viewport's tiles are (being) fetched. Returns how many tile groups are
    * still pending, so the client knows to poll again.
    */
-  ensure(from: number, to: number, categories?: readonly Category[]): number {
+  ensure(from: number, to: number, categories?: readonly Category[], lens: Lens = null): number {
     const now = Date.now();
     let pending = 0;
-    const jobs = this.plan(from, to, categories);
+    const jobs = this.plan(from, to, categories, lens);
     // Later in the list = lower priority; give earlier tiles a slightly newer timestamp.
     jobs.forEach((job, i) => {
-      const missing = [...job.categories].filter((c) => !this.isSettled(tileKey(c, job.level, job.start)));
+      const missing = [...job.categories].filter((c) => !this.isSettled(tileKey(c, job.level, job.start, job.nl)));
       if (missing.length === 0) return;
       pending++;
-      const k = groupKey(job.level, job.start);
-      if (this.running && groupKey(this.running.level, this.running.start) === k) return;
+      const k = jobKey(job);
+      if (this.running && jobKey(this.running) === k) return;
       const queued = this.queue.get(k);
       const wantedAt = now - i;
       if (queued) {
         missing.forEach((c) => queued.categories.add(c));
         queued.wantedAt = Math.max(queued.wantedAt, wantedAt);
       } else {
-        this.queue.set(k, { level: job.level, start: job.start, categories: new Set(missing), wantedAt });
+        this.queue.set(k, { ...job, categories: new Set(missing), wantedAt });
       }
     });
     this.pump();
@@ -144,7 +163,7 @@ export class Discovery {
       if (!next || job.wantedAt > next.wantedAt) next = job;
     }
     if (!next) return;
-    this.queue.delete(groupKey(next.level, next.start));
+    this.queue.delete(jobKey(next));
     this.running = next;
     void this.runJob(next).finally(() => {
       this.running = null;
@@ -153,29 +172,63 @@ export class Discovery {
   }
 
   private async runJob(job: Job): Promise<void> {
-    const cats = [...job.categories].filter((c) => !this.isSettled(tileKey(c, job.level, job.start)));
+    const key = (c: Category) => tileKey(c, job.level, job.start, job.nl);
+    const cats = [...job.categories].filter((c) => !this.isSettled(key(c)));
     if (cats.length === 0) return;
     const t0 = Date.now();
+    const label = `${job.nl ? "NL " : ""}${job.start}–${job.start + job.level}`;
     try {
-      const items = await fetchTile(cats, job.start, job.start + job.level, PER_TILE);
+      const items = await fetchTile(cats, job.start, job.start + job.level, job.nl ? PER_NL_TILE : PER_TILE, {
+        nlOnly: job.nl,
+      });
       const added = upsertWikidataItems(this.db, items);
-      for (const c of cats) {
-        setTileState(this.db, tileKey(c, job.level, job.start), "ok", items.filter((i) => i.category === c).length);
-      }
-      console.log(
-        `[discovery] ${job.start}–${job.start + job.level} [${cats.join(",")}]: ${items.length} items, ${added} new (${Date.now() - t0} ms)`,
-      );
+      for (const c of cats) setTileState(this.db, key(c), "ok", items.filter((i) => i.category === c).length);
+      console.log(`[discovery] ${label} [${cats.join(",")}]: ${items.length} items, ${added} new (${Date.now() - t0} ms)`);
+      // New items from global tiles don't know yet whether they're Dutch.
+      if (added > 0) this.scheduleNlCheck();
     } catch (err) {
-      for (const c of cats) setTileState(this.db, tileKey(c, job.level, job.start), "failed", 0);
-      console.warn(`[discovery] tile ${job.start}–${job.start + job.level} failed:`, (err as Error).message);
+      for (const c of cats) setTileState(this.db, key(c), "failed", 0);
+      console.warn(`[discovery] tile ${label} failed:`, (err as Error).message);
     }
   }
 
   /** Fetch every tile for a range, sequentially (for the warm-up script). */
-  async warm(from: number, to: number, windowSpan: number): Promise<void> {
+  async warm(from: number, to: number, windowSpan: number, lens: Lens = null): Promise<void> {
     for (let s = from; s < to; s += windowSpan) {
-      for (const job of this.plan(s, Math.min(s + windowSpan, to))) await this.runJob(job);
+      for (const job of this.plan(s, Math.min(s + windowSpan, to), CATEGORIES, lens)) await this.runJob(job);
     }
+  }
+
+  // ---------- Dutch connection check (background) ----------
+
+  private nlCheckRunning = false;
+
+  /**
+   * Flag stored items as Dutch or not, 100 per query on the Wikidata Query Service, until
+   * none are left unchecked. Runs in the background; safe to call often.
+   */
+  scheduleNlCheck(): void {
+    if (this.nlCheckRunning) return;
+    this.nlCheckRunning = true;
+    void (async () => {
+      let total = 0;
+      let dutch = 0;
+      try {
+        for (;;) {
+          const batch = getUncheckedNlQids(this.db, 100);
+          if (batch.length === 0) break;
+          const flagged = await qidsWithNlLink(batch);
+          setNlLinks(this.db, batch, flagged);
+          total += batch.length;
+          dutch += flagged.size;
+        }
+        if (total) console.log(`[nl] checked ${total} items, ${dutch} with a Dutch connection`);
+      } catch (err) {
+        console.warn(`[nl] check failed (will retry later):`, (err as Error).message);
+      } finally {
+        this.nlCheckRunning = false;
+      }
+    })();
   }
 
   /**
@@ -223,6 +276,18 @@ export class Discovery {
    * discovered items in both categories and let the tiles refill with the current queries.
    * Curated seed items stay.
    */
+  /**
+   * One-off: the Dutch-connection rule got stricter (a country must be ONLY Dutch, so a
+   * pandemic that also reached the Netherlands no longer counts). Re-check items that were
+   * flagged under the old rule; the background check picks them up.
+   */
+  recheckNlLinks(): void {
+    const KEY = "nl-recheck-v2";
+    if (hasRun(this.db, KEY)) return;
+    this.db.exec(`UPDATE items SET nl_link = NULL WHERE nl_link = 1`);
+    markRun(this.db, KEY);
+  }
+
   async cleanupStatesAndPeriods(): Promise<void> {
     const KEY = "refetch-states-periods-v2";
     if (hasRun(this.db, KEY)) return;
@@ -269,6 +334,7 @@ export class Discovery {
           this.classCache,
         );
         upsertWikidataItems(this.db, items);
+        this.scheduleNlCheck();
         const known = new Set(items.map((i) => i.qid));
         const qids = ranked.map((h) => h.qid).filter((q) => known.has(q));
         setSearchCache(this.db, key, qids);

@@ -240,14 +240,16 @@ export function App() {
     };
   }, [selected?.id, locale]);
 
-  // Everything that overlaps the selected item in time.
+  // Extra overlaps from outside the current viewport (API); merged with on-screen items below.
   useEffect(() => {
     if (!selected) {
       setConcurrentAll([]);
       return;
     }
+    // Point / closed span: query that lifespan. Ongoing (null end): through "now".
+    const to = selected.endYear ?? NOW_YEAR;
     let cancelled = false;
-    fetchItems({ from: selected.startYear, to: selected.endYear ?? NOW_YEAR, limit: 2000, perCategory: 15, lens: lensOn ? "nl" : null })
+    fetchItems({ from: selected.startYear, to, limit: 2000, perCategory: 15, lens: lensOn ? "nl" : null })
       .then(({ items: next }) => {
         if (!cancelled) setConcurrentAll(next);
       })
@@ -283,15 +285,26 @@ export function App() {
     () => (deferredQuery ? new Set(matches.map((m) => m.id)) : null),
     [matches, deferredQuery],
   );
-  const concurrent = useMemo(
-    () =>
-      selected
-        ? concurrentAll
-            .filter((i) => i.id !== selected.id && !hidden.has(i.category))
-            .sort((a, b) => CATEGORY_ORDER[a.category] - CATEGORY_ORDER[b.category] || a.startYear - b.startYear)
-        : [],
-    [concurrentAll, selected, hidden],
-  );
+  // Tegelijk: overlaps in time — always fold in what's already loaded in view, plus the
+  // wider API fetch (outside the current zoom). Both sides are overlap-filtered.
+  const concurrent = useMemo(() => {
+    if (!selected) return [];
+    const selEnd = selected.endYear ?? NOW;
+    const overlaps = (i: TimelineItem) => {
+      const iEnd = i.endYear ?? NOW;
+      return i.startYear <= selEnd && selected.startYear <= iEnd;
+    };
+    const byId = new Map<string, TimelineItem>();
+    for (const i of concurrentAll) {
+      if (overlaps(i)) byId.set(i.id, i);
+    }
+    for (const i of items) {
+      if (overlaps(i)) byId.set(i.id, i);
+    }
+    return [...byId.values()]
+      .filter((i) => i.id !== selected.id && !hidden.has(i.category))
+      .sort((a, b) => CATEGORY_ORDER[a.category] - CATEGORY_ORDER[b.category] || a.startYear - b.startYear);
+  }, [concurrentAll, items, selected, hidden]);
 
   const select = useCallback((item: TimelineItem) => {
     setDetail(null);

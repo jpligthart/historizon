@@ -10,6 +10,7 @@ import {
 } from "@historizon/shared";
 import {
   getItem,
+  getItemsByWikidataIds,
   getMeta,
   openDb,
   queryItems,
@@ -17,11 +18,21 @@ import {
   updateDescription,
   upsertItem,
 } from "./db.js";
+import { Discovery } from "./discovery.js";
 import { SEED_ITEMS } from "./seed-data.js";
 import { fetchWikipediaExtract } from "./wikipedia.js";
 
 const app = new Hono();
 const database = openDb();
+const discovery = new Discovery(database);
+
+function parseCategories(param: string | undefined): Category[] | undefined {
+  if (!param) return undefined;
+  return param
+    .split(",")
+    .map((x) => x.trim())
+    .filter((x): x is Category => (CATEGORIES as readonly string[]).includes(x));
+}
 
 const count = getMeta(database).count;
 if (count === 0) {
@@ -79,19 +90,28 @@ app.get("/api/items", (c) => {
     return c.json({ error: "Invalid from/to year range" }, 400);
   }
 
-  const categoriesParam = c.req.query("categories");
-  const categories = categoriesParam
-    ? (categoriesParam
-        .split(",")
-        .map((x) => x.trim())
-        .filter((x): x is Category => (CATEGORIES as readonly string[]).includes(x)) as Category[])
-    : undefined;
-
+  const categories = parseCategories(c.req.query("categories"));
   const q = c.req.query("q") ?? undefined;
   const limit = c.req.query("limit") ? Number(c.req.query("limit")) : undefined;
+  const perCategory = c.req.query("perCategory") ? Number(c.req.query("perCategory")) : undefined;
 
-  const items = queryItems(database, { from, to, categories, q, limit });
-  return c.json({ items, from, to, count: items.length });
+  // fetch=1: also discover more items for this viewport in the background.
+  const pending = c.req.query("fetch") === "1" ? discovery.ensure(from, to, categories) : 0;
+  const items = queryItems(database, { from, to, categories, q, limit, perCategory });
+  return c.json({ items, from, to, count: items.length, pending });
+});
+
+app.get("/api/search", async (c) => {
+  const q = (c.req.query("q") ?? "").trim();
+  const lang = c.req.query("lang") === "nl" ? "nl" : "en";
+  if (q.length < 2) return c.json({ items: [], remote: "skipped" });
+
+  // Wikipedia hits first (relevance order), then local full-text matches.
+  const { qids, remote } = await discovery.search(q, lang);
+  const fromWiki = getItemsByWikidataIds(database, qids);
+  const seen = new Set(fromWiki.map((i) => i.id));
+  const local = queryItems(database, { from: -100000, to: 100000, q, limit: 50 }).filter((i) => !seen.has(i.id));
+  return c.json({ items: [...fromWiki, ...local], remote });
 });
 
 app.get("/api/items/:id", async (c) => {
@@ -101,15 +121,22 @@ app.get("/api/items/:id", async (c) => {
 
   let item = rowToItem(row);
   const enrich = c.req.query("enrich") !== "0";
+  const lang = c.req.query("lang") === "nl" ? "nl" : "en";
 
-  if (enrich && !item.description && item.wikipediaUrl) {
-    const extracted = await fetchWikipediaExtract(item.wikipediaUrl, "en");
-    if (extracted) {
-      updateDescription(database, id, extracted.extract, extracted.url);
-      const refreshed = getItem(database, id);
-      if (refreshed) item = rowToItem(refreshed);
+  try {
+    // Dutch extract when viewing in Dutch and a Dutch article exists; otherwise English.
+    if (enrich && lang === "nl" && !item.descriptionNl && item.wikipediaUrlNl) {
+      const extracted = await fetchWikipediaExtract(item.wikipediaUrlNl, "nl");
+      if (extracted) updateDescription(database, id, extracted.extract, extracted.url, "nl");
+    } else if (enrich && !item.description && item.wikipediaUrl && !(lang === "nl" && item.descriptionNl)) {
+      const extracted = await fetchWikipediaExtract(item.wikipediaUrl, "en");
+      if (extracted) updateDescription(database, id, extracted.extract, extracted.url, "en");
     }
+  } catch (err) {
+    console.warn(`[extract] ${id}:`, (err as Error).message);
   }
+  const refreshed = getItem(database, id);
+  if (refreshed) item = rowToItem(refreshed);
 
   return c.json({ item });
 });

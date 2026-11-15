@@ -28,6 +28,10 @@ type Props = {
   onPanBack: () => void;
   onPanForward: () => void;
   onNow: () => void;
+  /** The server is still discovering items for this range. */
+  loadingMore?: boolean;
+  /** Reports how many items per category are actually drawn. */
+  onVisibleCounts?: (counts: Partial<Record<Category, number>>) => void;
 };
 
 const SELECTED_RING = "0 0 0 2px #fff, 0 0 0 4px #0B1220";
@@ -48,6 +52,8 @@ export function Timeline({
   onPanBack,
   onPanForward,
   onNow,
+  loadingMore = false,
+  onVisibleCounts,
 }: Props) {
   const span = Math.max(end - start, 1e-6);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -87,11 +93,19 @@ export function Timeline({
         now,
         width,
         labelOf,
+        selectedId,
         measure: measureLabel,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items, categories, start, end, now, width, labelOf, fontEpoch],
+    [items, categories, start, end, now, width, labelOf, selectedId, fontEpoch],
   );
+
+  useEffect(() => {
+    if (!onVisibleCounts) return;
+    const counts: Partial<Record<Category, number>> = {};
+    for (const b of bars) counts[b.category] = (counts[b.category] ?? 0) + 1;
+    onVisibleCounts(counts);
+  }, [bars, onVisibleCounts]);
 
   const ticks = useMemo(() => tickYears(start, end), [start, end]);
   const nowFrac = (now - start) / span;
@@ -136,6 +150,12 @@ export function Timeline({
         <div className="tl-range">
           <span className="tl-range-text">{rangeText}</span>
           <span className="tl-span-text">{spanText}</span>
+          {loadingMore && (
+            <span className="tl-loading" role="status">
+              <span className="spinner" aria-hidden="true" />
+              {t(locale, "loadingMore")}
+            </span>
+          )}
         </div>
         <div className="tl-nav">
           <button type="button" className="seg icon-btn" aria-label={t(locale, "earlier")} onClick={onPanBack}>
@@ -204,6 +224,11 @@ export function Timeline({
               <span className="dot" style={{ background: CATEGORY_COLORS[ln.category] }} />
               <span>{t(locale, ln.category)}</span>
             </div>
+            {ln.hiddenCount > 0 && (
+              <span className="tl-hidden" title={t(locale, "hiddenHint")}>
+                +{ln.hiddenCount}
+              </span>
+            )}
           </div>
         ))}
 

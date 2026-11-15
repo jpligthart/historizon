@@ -24,7 +24,14 @@ export type Lane = {
   category: Category;
   top: number;
   height: number;
+  /** Items in range that did not fit in MAX_ROWS (zoom in to see them). */
+  hiddenCount: number;
 };
+
+/** Rows per lane; the least notable items that do not fit are left out (level of detail). */
+export const MAX_ROWS = 6;
+/** Curated items without a sitelink count rank like this (matches the API). */
+const DEFAULT_IMPORTANCE = 120;
 
 const pct = (v: number) => `${(v * 100).toFixed(3)}%`;
 
@@ -37,8 +44,10 @@ export function isOngoing(item: TimelineItem): boolean {
 }
 
 /**
- * Lay items out in one lane per category. Inside a lane, items are packed into rows
- * so that bars and their (inside or outside) labels never overlap.
+ * Lay items out in one lane per category. Inside a lane, items are packed into at most
+ * MAX_ROWS rows so that bars and their (inside or outside) labels never overlap. Items are
+ * placed most-notable-first (the selection always goes first), so what gets dropped when a
+ * lane is full is the least notable.
  */
 export function layoutTimeline(opts: {
   items: TimelineItem[];
@@ -47,24 +56,28 @@ export function layoutTimeline(opts: {
   end: number;
   now: number;
   width: number;
+  selectedId?: string | null;
   labelOf: (item: TimelineItem) => string;
   measure: (text: string) => number;
 }): { lanes: Lane[]; bars: Bar[]; bodyHeight: number } {
-  const { items, categories, start, end, now, labelOf, measure } = opts;
+  const { items, categories, start, end, now, labelOf, measure, selectedId } = opts;
   const span = Math.max(end - start, 1e-6);
   const W = Math.max(opts.width, 1);
   const lanes: Lane[] = [];
   const bars: Bar[] = [];
+  const rank = (i: TimelineItem) => (i.id === selectedId ? Infinity : (i.importance ?? DEFAULT_IMPORTANCE));
   let y = 0;
 
   for (const category of categories) {
     const inLane = items
       .filter((i) => i.category === category)
       .map((i) => ({ item: i, s: i.startYear, e: i.endYear ?? now }))
-      .sort((a, b) => a.s - b.s || b.e - a.e);
+      .sort((a, b) => rank(b.item) - rank(a.item) || a.s - b.s);
 
-    const rowsEnd: number[] = [];
+    /** Occupied [start, end] pixel intervals per row. */
+    const rows: Array<Array<[number, number]>> = [];
     const laneTop = y;
+    let hiddenCount = 0;
 
     for (const { item, s, e } of inLane) {
       const label = labelOf(item);
@@ -90,9 +103,17 @@ export function layoutTimeline(opts: {
         }
       }
 
-      let row = 0;
-      while (row < rowsEnd.length && rowsEnd[row] + 8 > occS) row++;
-      rowsEnd[row] = occE;
+      const fits = (row: Array<[number, number]>) => row.every(([a, b]) => occE + 8 <= a || occS >= b + 8);
+      let row = rows.findIndex(fits);
+      if (row === -1) {
+        if (rows.length >= MAX_ROWS) {
+          hiddenCount++;
+          continue;
+        }
+        row = rows.length;
+        rows.push([]);
+      }
+      rows[row].push([occS, occE]);
       const top = laneTop + 12 + row * PITCH;
 
       let outside: CSSProperties | null = null;
@@ -109,9 +130,8 @@ export function layoutTimeline(opts: {
       bars.push({ item, category, label, top, f0, f1, point, inside, outside });
     }
 
-    const rows = rowsEnd.length;
-    const height = rows === 0 ? EMPTY_LANE_H : 24 + (rows - 1) * PITCH + BAR_H;
-    lanes.push({ category, top: laneTop, height });
+    const height = rows.length === 0 ? EMPTY_LANE_H : 24 + (rows.length - 1) * PITCH + BAR_H;
+    lanes.push({ category, top: laneTop, height, hiddenCount });
     y += height;
   }
 

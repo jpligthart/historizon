@@ -7,7 +7,7 @@ import {
   type TimelineItem,
   type TimelineMeta,
 } from "@historizon/shared";
-import { fetchItem, fetchItems, fetchMeta } from "./api";
+import { fetchItem, fetchItems, fetchMeta, searchItems } from "./api";
 import { Timeline } from "./Timeline";
 import { CC_BY_SA_URL, DetailPanel } from "./DetailPanel";
 
@@ -28,7 +28,10 @@ const NOW = currentFractionalYear();
 const NOW_YEAR = Math.floor(NOW);
 /** A little breathing room to the right of "now". */
 const RIGHT_PAD = 0.03;
-const FULL_RANGE = { from: -100000, to: 100000 };
+/** Most notable items per category in view (level of detail). */
+const PER_CATEGORY = 25;
+const POLL_MS = 1500;
+const MAX_POLLS = 40;
 const CATEGORY_ORDER = Object.fromEntries(CATEGORIES.map((c, i) => [c, i])) as Record<Category, number>;
 
 export function App() {
@@ -45,6 +48,11 @@ export function App() {
   const [selected, setSelected] = useState<TimelineItem | null>(null);
   const [detail, setDetail] = useState<TimelineItem | null>(null);
   const [concurrentAll, setConcurrentAll] = useState<TimelineItem[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [searchState, setSearchState] = useState<"idle" | "searching" | "done" | "failed">("idle");
+  const [refreshTick, setRefreshTick] = useState(0);
+  /** Items per category actually drawn on the timeline (after level-of-detail trimming). */
+  const [drawnCounts, setDrawnCounts] = useState<Partial<Record<Category, number>>>({});
 
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -64,47 +72,69 @@ export function App() {
   );
 
   // Items in the viewport. All categories are fetched so chips can show counts;
-  // hidden categories are filtered out client-side.
+  // hidden categories are filtered out client-side. The server discovers more items on
+  // Wikidata for this range in the background; while it reports pending tiles we poll.
   useEffect(() => {
-    let cancelled = false;
-    const handle = window.setTimeout(() => {
-      fetchItems({ from: start, to: end, limit: 2000 })
-        .then((next) => {
-          if (!cancelled) setItems(next);
+    const ctrl = new AbortController();
+    let timer = 0;
+    let polls = 0;
+    const load = () => {
+      fetchItems({ from: start, to: end, limit: 2000, perCategory: PER_CATEGORY, discover: true, signal: ctrl.signal })
+        .then(({ items: next, pending }) => {
+          setItems(next);
+          const more = pending > 0 && polls < MAX_POLLS;
+          setLoadingMore(more);
+          if (more) {
+            polls++;
+            timer = window.setTimeout(load, POLL_MS);
+          }
         })
-        .catch((err) => console.error(err));
-    }, 100);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(handle);
+        .catch((err) => {
+          if (!ctrl.signal.aborted) console.error(err);
+        });
     };
-  }, [start, end]);
+    timer = window.setTimeout(load, 250);
+    return () => {
+      ctrl.abort();
+      window.clearTimeout(timer);
+    };
+  }, [start, end, refreshTick]);
 
-  // Search matches across all of history (for the match count and "jump to first").
+  // Search: Wikipedia (via the API, cached server-side) + local database, relevance order.
   useEffect(() => {
-    if (!deferredQuery) {
+    if (deferredQuery.length < 2) {
       setMatches([]);
+      setSearchState("idle");
       return;
     }
-    let cancelled = false;
+    const ctrl = new AbortController();
     const handle = window.setTimeout(() => {
-      fetchItems({ ...FULL_RANGE, q: deferredQuery, limit: 2000 })
-        .then((next) => {
-          if (!cancelled) setMatches(next);
+      setSearchState("searching");
+      searchItems(deferredQuery, locale, ctrl.signal)
+        .then(({ items: found, remote }) => {
+          setMatches(found);
+          setSearchState(remote === "failed" ? "failed" : "done");
+          // New items may have landed in the database; refresh the timeline.
+          if (remote === "fetched") setRefreshTick((n) => n + 1);
         })
-        .catch((err) => console.error(err));
-    }, 150);
+        .catch((err) => {
+          if (!ctrl.signal.aborted) {
+            console.error(err);
+            setSearchState("failed");
+          }
+        });
+    }, 350);
     return () => {
-      cancelled = true;
+      ctrl.abort();
       window.clearTimeout(handle);
     };
-  }, [deferredQuery]);
+  }, [deferredQuery, locale]);
 
-  // Enriched detail (Wikipedia extract) for the selected item.
+  // Enriched detail (Wikipedia extract, in the UI language when available).
   useEffect(() => {
     if (!selected) return;
     let cancelled = false;
-    fetchItem(selected.id)
+    fetchItem(selected.id, locale)
       .then((item) => {
         if (!cancelled) setDetail(item);
       })
@@ -112,7 +142,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [selected?.id]);
+  }, [selected?.id, locale]);
 
   // Everything that overlaps the selected item in time.
   useEffect(() => {
@@ -121,8 +151,8 @@ export function App() {
       return;
     }
     let cancelled = false;
-    fetchItems({ from: selected.startYear, to: selected.endYear ?? NOW_YEAR, limit: 2000 })
-      .then((next) => {
+    fetchItems({ from: selected.startYear, to: selected.endYear ?? NOW_YEAR, limit: 2000, perCategory: 15 })
+      .then(({ items: next }) => {
         if (!cancelled) setConcurrentAll(next);
       })
       .catch((err) => console.error(err));
@@ -137,11 +167,22 @@ export function App() {
   );
 
   const visibleCategories = useMemo(() => CATEGORIES.filter((c) => !hidden.has(c)), [hidden]);
-  const visibleItems = useMemo(() => items.filter((i) => !hidden.has(i.category)), [items, hidden]);
-  const visibleMatches = useMemo(
-    () => matches.filter((i) => !hidden.has(i.category)).sort((a, b) => a.startYear - b.startYear),
-    [matches, hidden],
-  );
+  const visibleItems = useMemo(() => {
+    const list = items.filter((i) => !hidden.has(i.category));
+    // The selection may be less notable than the top-N the server returns; keep it visible.
+    if (
+      selected &&
+      !hidden.has(selected.category) &&
+      selected.startYear <= end &&
+      (selected.endYear ?? NOW) >= start &&
+      !list.some((i) => i.id === selected.id)
+    ) {
+      list.push(selected);
+    }
+    return list;
+  }, [items, hidden, selected, start, end]);
+  // Relevance order (best Wikipedia hit first), so "jump" goes to the most likely match.
+  const visibleMatches = useMemo(() => matches.filter((i) => !hidden.has(i.category)), [matches, hidden]);
   const matchIds = useMemo(
     () => (deferredQuery ? new Set(matches.map((m) => m.id)) : null),
     [matches, deferredQuery],
@@ -253,14 +294,23 @@ export function App() {
           />
         </div>
 
-        {deferredQuery && visibleMatches.length > 0 && (
-          <div className="matches">
-            <span>
-              {visibleMatches.length} {t(locale, "matches")}
-            </span>
-            <button type="button" className="seg outline-btn" onClick={jumpToFirst}>
-              {t(locale, "jump")}
-            </button>
+        {deferredQuery.length >= 2 && (
+          <div className="matches" aria-live="polite">
+            {searchState === "searching" && visibleMatches.length === 0 ? (
+              <span className="busy">{t(locale, "searchingWiki")}</span>
+            ) : visibleMatches.length > 0 ? (
+              <>
+                <span className={searchState === "searching" ? "busy" : undefined}>
+                  {visibleMatches.length} {t(locale, "matches")}
+                </span>
+                <button type="button" className="seg outline-btn" onClick={jumpToFirst}>
+                  {t(locale, "jump")}
+                </button>
+              </>
+            ) : searchState !== "idle" ? (
+              <span>{t(locale, "noMatches")}</span>
+            ) : null}
+            {searchState === "failed" && <span>· {t(locale, "searchOffline")}</span>}
           </div>
         )}
 
@@ -281,7 +331,9 @@ export function App() {
                   style={on ? { background: color } : { border: `2px solid ${color}` }}
                 />
                 <span>{t(locale, cat)}</span>
-                <span className="chip-count">{items.filter((i) => i.category === cat).length}</span>
+                <span className="chip-count">
+                  {on ? (drawnCounts[cat] ?? 0) : items.filter((i) => i.category === cat).length}
+                </span>
               </button>
             );
           })}
@@ -325,6 +377,8 @@ export function App() {
           onPanBack={() => panBy(-1)}
           onPanForward={() => panBy(1)}
           onNow={goNow}
+          loadingMore={loadingMore}
+          onVisibleCounts={setDrawnCounts}
         />
         <DetailPanel
           locale={locale}

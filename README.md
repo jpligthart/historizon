@@ -42,11 +42,33 @@ Open http://127.0.0.1:8463
 
 ## Data
 
-- First API start auto-seeds a curated set if the DB is empty.
+- First API start auto-seeds a small curated set if the DB is empty.
 - `npm run seed` — re-apply curated seed (upsert).
-- `npm run ingest -- 40` — polite Wikidata SPARQL sample (wars). Prefer dumps for large backfills.
+- Everything else is discovered on demand from Wikidata/Wikipedia and cached in SQLite.
 
-Set `WIKI_USER_AGENT` in `.env` to a real contact string before heavy Wikipedia use.
+### Discovery while you zoom and scroll
+
+Time is cut into **tiles**, like a map: the closer you zoom in, the smaller the tiles (10, 50 or 250 years). For each tile the API fetches the 15 most notable items per category (notability = number of Wikipedia language editions, minimum 10; 25 for periods) whose start falls in it. People and periods also look back (80 / 250 years), because they start before the viewport.
+
+- One SPARQL query per tile covers all categories; tiles are fetched once and kept for 30 days (failed tiles are retried after 10 minutes).
+- `GET /api/items?…&fetch=1` queues the missing tiles for that viewport and returns `pending`; the web app polls until it reaches 0. Tiles you scrolled past are dropped from the queue. Views wider than 1,500 years only show what is cached.
+- The timeline shows at most 6 rows per category, most notable first; a `+n` badge means more items are in range — zoom in to see them.
+- `npm run ingest -- 1800 2026 50` warms tiles for a range ahead of time (sequential, rate-limited).
+
+### Search
+
+Search queries Wikipedia (in the UI language), resolves the hits to Wikidata, classifies them into categories via their classes, stores them, and caches the result for 7 days. Local full-text matches are added after the Wikipedia hits. If Wikipedia rate-limits us, search returns local results immediately instead of waiting.
+
+### Upstream services and politeness
+
+| Service | Used for | Pace |
+| --- | --- | --- |
+| [QLever](https://qlever.dev) Wikidata SPARQL (Uni Freiburg) | viewport tiles | 1 query at a time, ≥ 6 s apart |
+| Wikipedia Action API | search, extracts | 1 at a time, ≥ 0.5 s apart |
+| Wikidata Action API | search hit details | 1 at a time, ≥ 0.2 s apart |
+| Wikidata Query Service | class hierarchy (cached 90 days) | 1 at a time, ≥ 1 s apart |
+
+All requests honour `Retry-After` and pause the whole service on 429/503. **Set `WIKI_USER_AGENT`** with real contact info before running this publicly; Wikimedia throttles anonymous-looking clients hard.
 
 ## Zoom
 

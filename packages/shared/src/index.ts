@@ -30,6 +30,8 @@ export interface TimelineItem {
   wikidataId: string | null;
   /** True when the description is a cached Wikipedia extract (CC BY-SA 4.0, needs attribution). */
   descriptionFromWikipedia: boolean;
+  /** Notability (Wikipedia sitelink count); null for curated items without a Wikidata link. */
+  importance: number | null;
 }
 
 export interface TimelineQuery {

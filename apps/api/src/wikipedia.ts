@@ -1,33 +1,25 @@
-const DEFAULT_UA =
-  "Historizon/0.1 (https://github.com/example/historizon; contact@example.com)";
+import { politeFetch, throttles } from "./throttle.js";
 
-function userAgent(): string {
-  return process.env.WIKI_USER_AGENT?.trim() || DEFAULT_UA;
-}
+export type WikiLang = "en" | "nl";
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Fetch a short plain-text extract from the MediaWiki API. Cached by caller. */
-export async function fetchWikipediaExtract(
-  titleOrUrl: string,
-  lang = "en",
-): Promise<{ extract: string; url: string } | null> {
-  let title = titleOrUrl;
+function titleFromUrl(titleOrUrl: string): string | null {
+  if (!titleOrUrl.startsWith("http")) return titleOrUrl;
   try {
-    if (titleOrUrl.startsWith("http")) {
-      const u = new URL(titleOrUrl);
-      const parts = u.pathname.split("/");
-      title = decodeURIComponent(parts[parts.length - 1] ?? "");
-    }
+    const parts = new URL(titleOrUrl).pathname.split("/");
+    return decodeURIComponent(parts[parts.length - 1] ?? "") || null;
   } catch {
     return null;
   }
+}
 
+/** Fetch a short plain-text intro extract from the MediaWiki API. Cached by caller. */
+export async function fetchWikipediaExtract(
+  titleOrUrl: string,
+  lang: WikiLang = "en",
+): Promise<{ extract: string; url: string } | null> {
+  const title = titleFromUrl(titleOrUrl);
   if (!title) return null;
 
-  const endpoint = `https://${lang}.wikipedia.org/w/api.php`;
   const params = new URLSearchParams({
     action: "query",
     prop: "extracts|info",
@@ -37,114 +29,60 @@ export async function fetchWikipediaExtract(
     inprop: "url",
     titles: title,
     format: "json",
-    origin: "*",
+    formatversion: "2",
   });
 
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await fetch(`${endpoint}?${params}`, {
-      headers: {
-        "User-Agent": userAgent(),
-        Accept: "application/json",
-      },
-    });
+  const res = await politeFetch(throttles.wikipedia, `https://${lang}.wikipedia.org/w/api.php?${params}`, {
+    headers: { Accept: "application/json" },
+    // A user is waiting: return local results rather than sit out a long back-off.
+    maxWaitMs: 3000,
+    retries: 1,
+  });
+  if (!res.ok) return null;
 
-    if (res.status === 429 || res.status >= 500) {
-      await sleep(500 * (attempt + 1));
-      continue;
-    }
-    if (!res.ok) return null;
+  const data = (await res.json()) as {
+    query?: { pages?: Array<{ extract?: string; fullurl?: string; missing?: boolean }> };
+  };
+  const page = data.query?.pages?.[0];
+  if (!page || page.missing || !page.extract) return null;
 
-    const data = (await res.json()) as {
-      query?: {
-        pages?: Record<
-          string,
-          { extract?: string; fullurl?: string; missing?: string }
-        >;
-      };
-    };
-
-    const pages = data.query?.pages;
-    if (!pages) return null;
-    const page = Object.values(pages)[0];
-    if (!page || page.missing !== undefined || !page.extract) return null;
-
-    const extract = page.extract.trim().slice(0, 600);
-    return {
-      extract: extract.length < page.extract.trim().length ? `${extract}…` : extract,
-      url: page.fullurl ?? `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title)}`,
-    };
-  }
-
-  return null;
+  const full = page.extract.trim();
+  const extract = full.slice(0, 600);
+  return {
+    extract: extract.length < full.length ? `${extract}…` : extract,
+    url: page.fullurl ?? `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title)}`,
+  };
 }
 
 /**
- * Minimal Wikidata SPARQL sample ingest — polite, limited, for expansion.
- * Prefer dumps for large backfills.
+ * Full-text search on Wikipedia; returns the Wikidata ids of the hits in relevance order.
+ * One request: generator=search + pageprops.
  */
-export async function sparqlSample(limit = 50): Promise<
-  Array<{
-    id: string;
-    title: string;
-    startYear: number;
-    endYear: number | null;
-    wikidataId: string;
-    wikipediaUrl: string | null;
-  }>
-> {
-  const query = `
-SELECT ?item ?itemLabel ?start ?end ?article WHERE {
-  ?item wdt:P31/wdt:P279* wd:Q198 .
-  OPTIONAL { ?item wdt:P580 ?start . }
-  OPTIONAL { ?item wdt:P582 ?end . }
-  OPTIONAL {
-    ?article schema:about ?item ;
-             schema:isPartOf <https://en.wikipedia.org/> .
-  }
-  FILTER(BOUND(?start))
-  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
-}
-LIMIT ${Math.min(Math.max(limit, 1), 100)}
-`.trim();
-
-  const url = `https://query.wikidata.org/sparql?query=${encodeURIComponent(query)}&format=json`;
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent": userAgent(),
-      Accept: "application/sparql-results+json",
-    },
+export async function searchWikipedia(q: string, lang: WikiLang, limit = 12): Promise<string[]> {
+  const params = new URLSearchParams({
+    action: "query",
+    generator: "search",
+    gsrsearch: q,
+    gsrlimit: String(limit),
+    gsrnamespace: "0",
+    prop: "pageprops",
+    ppprop: "wikibase_item",
+    redirects: "1",
+    format: "json",
+    formatversion: "2",
   });
-
-  if (!res.ok) {
-    throw new Error(`Wikidata SPARQL failed: ${res.status}`);
-  }
-
-  const json = (await res.json()) as {
-    results: {
-      bindings: Array<{
-        item: { value: string };
-        itemLabel: { value: string };
-        start?: { value: string };
-        end?: { value: string };
-        article?: { value: string };
-      }>;
-    };
+  const res = await politeFetch(throttles.wikipedia, `https://${lang}.wikipedia.org/w/api.php?${params}`, {
+    headers: { Accept: "application/json" },
+    // A user is waiting: return local results rather than sit out a long back-off.
+    maxWaitMs: 3000,
+    retries: 1,
+  });
+  if (!res.ok) throw new Error(`Wikipedia search ${res.status}`);
+  const data = (await res.json()) as {
+    query?: { pages?: Array<{ index?: number; pageprops?: { wikibase_item?: string } }> };
   };
-
-  return json.results.bindings
-    .map((b) => {
-      const wikidataId = b.item.value.split("/").pop() ?? "";
-      const startYear = b.start ? Number(b.start.value.slice(0, 4)) : NaN;
-      const endYear = b.end ? Number(b.end.value.slice(0, 4)) : null;
-      if (!wikidataId || Number.isNaN(startYear)) return null;
-      return {
-        id: `wd-${wikidataId}`,
-        title: b.itemLabel.value,
-        startYear,
-        endYear: endYear !== null && !Number.isNaN(endYear) ? endYear : null,
-        wikidataId,
-        wikipediaUrl: b.article?.value ?? null,
-      };
-    })
-    .filter((x): x is NonNullable<typeof x> => x !== null);
+  return (data.query?.pages ?? [])
+    .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
+    .map((p) => p.pageprops?.wikibase_item)
+    .filter((x): x is string => !!x);
 }

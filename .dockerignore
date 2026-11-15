@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+.git
+.env
+*.log
+.cursor
+**/*.md
+!README.md
+data/*.sqlite
+data/*.sqlite-*
+agent-transcripts
+agent-tools

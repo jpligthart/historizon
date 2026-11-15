@@ -1,0 +1,88 @@
+import type { Category } from "@historizon/shared";
+
+export type Locale = "en" | "nl";
+
+const messages = {
+  en: {
+    brand: "Historizon",
+    tagline: "See what happened at the same time.",
+    language: "Language",
+    search: "Search history",
+    searchPlaceholder: "Search history…",
+    categories: "Categories",
+    zoom: "Zoom (years)",
+    now: "Now",
+    earlier: "Earlier",
+    later: "Later",
+    inView: "years in view",
+    concurrent: "At the same time",
+    more: "more",
+    openWikipedia: "Open on Wikipedia",
+    extractNote: "Wikipedia summary, fetched on open",
+    noExtract: "No summary available yet.",
+    emptyHint: "Pick an item to see what happened at the same time.",
+    noResults: "Nothing in view. Zoom out or switch a category on.",
+    present: "present",
+    matches: "matches",
+    jump: "Jump to first",
+    years: "years",
+    bce: "BCE",
+    detail: "Detail",
+    person: "People",
+    period: "Periods",
+    event: "Events",
+    war: "Wars",
+    invention: "Inventions",
+    artwork: "Artworks",
+    place: "Places",
+  },
+  nl: {
+    brand: "Historizon",
+    tagline: "Zie wat er tegelijk gebeurde.",
+    language: "Taal",
+    search: "Zoek in de geschiedenis",
+    searchPlaceholder: "Zoek in de geschiedenis…",
+    categories: "Categorieën",
+    zoom: "Zoom (jaar)",
+    now: "Nu",
+    earlier: "Eerder",
+    later: "Later",
+    inView: "jaar in beeld",
+    concurrent: "Tegelijk",
+    more: "meer",
+    openWikipedia: "Open op Wikipedia",
+    extractNote: "Samenvatting uit Wikipedia, opgehaald bij openen",
+    noExtract: "Nog geen samenvatting beschikbaar.",
+    emptyHint: "Kies een item om te zien wat er tegelijk gebeurde.",
+    noResults: "Niets in beeld. Zoom uit of zet een categorie aan.",
+    present: "heden",
+    matches: "treffers",
+    jump: "Spring naar eerste",
+    years: "jaar",
+    bce: "v.Chr.",
+    detail: "Detail",
+    person: "Personen",
+    period: "Periodes",
+    event: "Gebeurtenissen",
+    war: "Oorlogen",
+    invention: "Uitvindingen",
+    artwork: "Kunstwerken",
+    place: "Plaatsen",
+  },
+} as const satisfies Record<Locale, Record<string, string>>;
+
+export type MessageKey = keyof (typeof messages)["en"];
+
+export function t(locale: Locale, key: MessageKey): string {
+  return messages[locale][key] ?? messages.en[key];
+}
+
+export const CATEGORY_COLORS: Record<Category, string> = {
+  person: "#0F766E",
+  period: "#1D4ED8",
+  event: "#B45309",
+  war: "#B91C1C",
+  invention: "#7E22CE",
+  artwork: "#BE185D",
+  place: "#475569",
+};

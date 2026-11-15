@@ -1,0 +1,21 @@
+{
+  "name": "historizon",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=26"
+  },
+  "scripts": {
+    "build": "npm run build -w @historizon/shared && npm run build -w @historizon/api && npm run build -w @historizon/web",
+    "dev:api": "npm run dev -w @historizon/api",
+    "dev:web": "npm run dev -w @historizon/web",
+    "typecheck": "npm run typecheck -w @historizon/shared && npm run typecheck -w @historizon/api && npm run typecheck -w @historizon/web",
+    "ingest": "npm run ingest -w @historizon/api",
+    "seed": "npm run seed -w @historizon/api",
+    "docker:push": "node scripts/docker-push.mjs"
+  }
+}

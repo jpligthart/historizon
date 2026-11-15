@@ -335,11 +335,15 @@ input:focus-visible {
 }
 
 
+.chips-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  flex: 1 1 auto;
 }
 
 .chip {
@@ -510,6 +514,19 @@ input:focus-visible {
   color: var(--ink-soft);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.tl-tick.start {
+  border-left: none;
+  padding-left: 0;
+}
+
+.tl-tick.end {
+  border-left: none;
+  transform: translateX(-100%);
+  padding-left: 0;
+  padding-right: 6px;
+  text-align: right;
 }
 
 .tl-now-badge {
@@ -955,6 +972,63 @@ input:focus-visible {
   .main {
     padding-left: 16px;
     padding-right: 16px;
+  }
+
+  .toolbar {
+    gap: 8px 10px;
+    padding-bottom: 12px;
+  }
+
+  /* Full-width chip row; lens sits on the next line so they don't fight. */
+  .chips-scroll {
+    position: relative;
+    flex: 1 1 100%;
+  }
+
+  .chips-scroll::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 32px;
+    pointer-events: none;
+    background: linear-gradient(to right, transparent, var(--bg));
+  }
+
+  .chips {
+    flex-wrap: nowrap;
+    gap: 4px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-right: 20px;
+  }
+
+  .chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .chip {
+    flex: 0 0 auto;
+    height: 28px;
+    gap: 5px;
+    padding: 0 9px 0 8px;
+    font-size: 12px;
+  }
+
+  .chip-dot {
+    width: 8px;
+    height: 8px;
+  }
+
+  .lens-toggle {
+    flex: 0 0 auto;
+    height: 28px;
+    margin-left: auto;
+    gap: 6px;
+    padding: 0 10px 0 6px;
+    font-size: 12px;
   }
 
   :root {

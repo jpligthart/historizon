@@ -145,6 +145,19 @@ export function Timeline({
   const ticks = useMemo(() => tickYears(start, end), [start, end]);
   const nowFrac = (now - start) / span;
   const showNow = nowFrac >= 0 && nowFrac <= 1;
+  // Narrow track: only period edges as labels (gridlines still use full ticks).
+  const compactAxis = width < 480;
+  const axisLabels = useMemo(() => {
+    if (!compactAxis) return ticks.map((y) => ({ y, edge: null as "start" | "end" | null }));
+    const labels: Array<{ y: number; edge: "start" | "end" }> = [
+      { y: Math.round(start), edge: "start" },
+    ];
+    // NU badge already marks the present; skip a duplicate year on top of it.
+    if (!showNow || nowFrac < 0.92) {
+      labels.push({ y: Math.round(end), edge: "end" });
+    }
+    return labels;
+  }, [compactAxis, ticks, start, end, showNow, nowFrac]);
   const bce = t(locale, "bce");
 
   // Ctrl/Cmd + wheel zooms around the cursor; horizontal wheel (or Shift + wheel) pans.
@@ -230,8 +243,19 @@ export function Timeline({
 
       <div className="tl-axis" aria-hidden="true">
         <div className="tl-track" ref={trackRef}>
-          {ticks.map((y) => (
-            <div key={y} className="tl-tick" style={{ left: `${((y - start) / span) * 100}%` }}>
+          {axisLabels.map(({ y, edge }) => (
+            <div
+              key={`${edge ?? "t"}-${y}`}
+              className={`tl-tick${edge ? ` ${edge}` : ""}`}
+              style={{
+                left:
+                  edge === "start"
+                    ? "0%"
+                    : edge === "end"
+                      ? "100%"
+                      : `${((y - start) / span) * 100}%`,
+              }}
+            >
               {fmtYear(y, bce)}
             </div>
           ))}

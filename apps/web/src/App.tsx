@@ -462,26 +462,28 @@ export function App() {
       </header>
 
       <div className="toolbar">
-        <div className="chips" role="group" aria-label={t(locale, "categories")}>
-          {CATEGORIES.map((cat) => {
-            const on = !hidden.has(cat);
-            const color = CATEGORY_COLORS[cat];
-            return (
-              <button
-                key={cat}
-                type="button"
-                className={`chip${on ? " on" : ""}`}
-                aria-pressed={on}
-                onClick={() => toggleCategory(cat)}
-              >
-                <span
-                  className="chip-dot"
-                  style={on ? { background: color } : { border: `2px solid ${color}` }}
-                />
-                <span>{t(locale, cat)}</span>
-              </button>
-            );
-          })}
+        <div className="chips-scroll">
+          <div className="chips" role="group" aria-label={t(locale, "categories")}>
+            {CATEGORIES.map((cat) => {
+              const on = !hidden.has(cat);
+              const color = CATEGORY_COLORS[cat];
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  className={`chip${on ? " on" : ""}`}
+                  aria-pressed={on}
+                  onClick={() => toggleCategory(cat)}
+                >
+                  <span
+                    className="chip-dot"
+                    style={on ? { background: color } : { border: `2px solid ${color}` }}
+                  />
+                  <span>{t(locale, cat)}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
         <button
           type="button"

@@ -236,6 +236,8 @@ export function App() {
     setSelected(m);
   };
 
+  const showSearchStatus = deferredQuery.length >= 2 && searchState !== "idle";
+
   const toggleCategory = (cat: Category) =>
     setHidden((prev) => {
       const next = new Set(prev);
@@ -277,7 +279,7 @@ export function App() {
       </header>
 
       <div className="toolbar">
-        <div className="search">
+        <div className={`search${showSearchStatus ? " has-status" : ""}`}>
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="11" cy="11" r="7" />
             <path d="M20 20l-4-4" />
@@ -292,27 +294,38 @@ export function App() {
             placeholder={t(locale, "searchPlaceholder")}
             aria-label={t(locale, "search")}
           />
-        </div>
-
-        {deferredQuery.length >= 2 && (
-          <div className="matches" aria-live="polite">
-            {searchState === "searching" && visibleMatches.length === 0 ? (
-              <span className="busy">{t(locale, "searchingWiki")}</span>
-            ) : visibleMatches.length > 0 ? (
-              <>
-                <span className={searchState === "searching" ? "busy" : undefined}>
-                  {visibleMatches.length} {t(locale, "matches")}
+          {/* Status lives inside the field so the toolbar never reflows while searching. */}
+          {showSearchStatus && (
+            <div className="search-status" aria-live="polite">
+              {searchState === "searching" && <span className="spinner" aria-hidden="true" />}
+              <span className="search-count">
+                {visibleMatches.length > 0
+                  ? `${visibleMatches.length} ${t(locale, "matches")}`
+                  : searchState === "searching"
+                    ? t(locale, "searchingShort")
+                    : t(locale, "noMatches")}
+              </span>
+              {searchState === "failed" && (
+                <span className="search-warn" role="img" title={t(locale, "searchOffline")} aria-label={t(locale, "searchOffline")}>
+                  !
                 </span>
-                <button type="button" className="seg outline-btn" onClick={jumpToFirst}>
-                  {t(locale, "jump")}
+              )}
+              {visibleMatches.length > 0 && (
+                <button
+                  type="button"
+                  className="jump-btn"
+                  onClick={jumpToFirst}
+                  title={t(locale, "jump")}
+                  aria-label={t(locale, "jump")}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 12h14M13 6l6 6-6 6" />
+                  </svg>
                 </button>
-              </>
-            ) : searchState !== "idle" ? (
-              <span>{t(locale, "noMatches")}</span>
-            ) : null}
-            {searchState === "failed" && <span>· {t(locale, "searchOffline")}</span>}
-          </div>
-        )}
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="chips" role="group" aria-label={t(locale, "categories")}>
           {CATEGORIES.map((cat) => {

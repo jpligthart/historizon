@@ -1,5 +1,6 @@
 services:
   api:
+    container_name: historizon-api
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -27,6 +28,7 @@ services:
       start_period: 10s
 
   web:
+    container_name: historizon-web
     build:
       context: .
       dockerfile: apps/web/Dockerfile

@@ -1154,17 +1154,23 @@ input:focus-visible {
 }
 
 .about-btn {
-  border: 0;
-  background: transparent;
-  padding: 0;
-  font-size: 12px;
-  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  /* Match .segmented outer height (3px pad + 38px seg). */
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 600;
   color: var(--ink-soft);
   cursor: pointer;
 }
 
 .about-btn:hover,
 .about-btn[aria-expanded="true"] {
+  border-color: #8896a8;
   color: var(--ink);
 }
 

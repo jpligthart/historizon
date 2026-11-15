@@ -50,7 +50,7 @@ const messages = {
     event: "Events",
     war: "Wars",
     invention: "Science & technology",
-    artwork: "Artworks",
+    artwork: "Arts & culture",
     place: "Buildings",
   },
   nl: {
@@ -100,7 +100,7 @@ const messages = {
     event: "Gebeurtenissen",
     war: "Oorlogen",
     invention: "Wetenschap & techniek",
-    artwork: "Kunstwerken",
+    artwork: "Kunst & cultuur",
     place: "Bouwwerken",
   },
 } as const satisfies Record<Locale, Record<string, string>>;

@@ -802,14 +802,22 @@ input:focus-visible {
 }
 
 .tl-hidden {
-  display: inline-block;
-  margin-left: 36px;
-  padding: 1px 6px;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 30px;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
   border-radius: 999px;
-  background: var(--surface-soft);
+  background: var(--surface);
   font-size: 11px;
   font-weight: 600;
   color: var(--ink-soft);
   font-variant-numeric: tabular-nums;
-  cursor: help;
+  cursor: pointer;
+}
+
+.tl-hidden:hover {
+  border-color: #8896a8;
+  color: var(--ink);
 }

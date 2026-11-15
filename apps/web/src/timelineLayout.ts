@@ -29,8 +29,12 @@ export type Lane = {
   category: Category;
   top: number;
   height: number;
-  /** Items in range that did not fit in MAX_ROWS (zoom in to see them). */
+  /** Items in range left out because the lane is capped at MAX_ROWS. */
   hiddenCount: number;
+  /** Items in range for this category (drawn + hidden). */
+  totalCount: number;
+  /** Lane is expanded and actually needs more than MAX_ROWS (so it can be collapsed). */
+  canCollapse: boolean;
 };
 
 /** Rows per lane; the least notable items that do not fit are left out (level of detail). */
@@ -62,10 +66,12 @@ export function layoutTimeline(opts: {
   now: number;
   width: number;
   selectedId?: string | null;
+  /** Categories shown in full instead of capped at MAX_ROWS. */
+  expanded?: ReadonlySet<Category>;
   labelOf: (item: TimelineItem) => string;
   measure: (text: string) => number;
 }): { lanes: Lane[]; bars: Bar[]; bodyHeight: number } {
-  const { items, categories, start, end, now, labelOf, measure, selectedId } = opts;
+  const { items, categories, start, end, now, labelOf, measure, selectedId, expanded } = opts;
   const span = Math.max(end - start, 1e-6);
   const W = Math.max(opts.width, 1);
   const lanes: Lane[] = [];
@@ -83,6 +89,7 @@ export function layoutTimeline(opts: {
     const rows: Array<Array<[number, number]>> = [];
     const laneTop = y;
     let hiddenCount = 0;
+    const maxRows = expanded?.has(category) ? Infinity : MAX_ROWS;
 
     for (const { item, s, e } of inLane) {
       const label = labelOf(item);
@@ -115,7 +122,7 @@ export function layoutTimeline(opts: {
       const fits = (row: Array<[number, number]>) => row.every(([a, b]) => occE + 8 <= a || occS >= b + 8);
       let row = rows.findIndex(fits);
       if (row === -1) {
-        if (rows.length >= MAX_ROWS) {
+        if (rows.length >= maxRows) {
           hiddenCount++;
           continue;
         }
@@ -143,7 +150,14 @@ export function layoutTimeline(opts: {
     }
 
     const height = rows.length === 0 ? EMPTY_LANE_H : 24 + (rows.length - 1) * PITCH + BAR_H;
-    lanes.push({ category, top: laneTop, height, hiddenCount });
+    lanes.push({
+      category,
+      top: laneTop,
+      height,
+      hiddenCount,
+      totalCount: inLane.length,
+      canCollapse: maxRows === Infinity && rows.length > MAX_ROWS,
+    });
     y += height;
   }
 

@@ -84,6 +84,14 @@ export function Timeline({
   const [width, setWidth] = useState(860);
   const [fontEpoch, setFontEpoch] = useState(0);
   const [dragging, setDragging] = useState(false);
+  const [expanded, setExpanded] = useState<ReadonlySet<Category>>(new Set());
+  const toggleLane = (c: Category) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(c)) next.delete(c);
+      else next.add(c);
+      return next;
+    });
   const lastX = useRef<number | null>(null);
 
   useEffect(() => {
@@ -117,10 +125,11 @@ export function Timeline({
         width,
         labelOf,
         selectedId,
+        expanded,
         measure: measureLabel,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items, categories, start, end, now, width, labelOf, selectedId, fontEpoch],
+    [items, categories, start, end, now, width, labelOf, selectedId, expanded, fontEpoch],
   );
 
   useEffect(() => {
@@ -247,11 +256,27 @@ export function Timeline({
               <span className="dot" style={{ background: CATEGORY_COLORS[ln.category] }} />
               <span>{t(locale, ln.category)}</span>
             </div>
-            {ln.hiddenCount > 0 && (
-              <span className="tl-hidden" title={t(locale, "hiddenHint")}>
+            {ln.hiddenCount > 0 ? (
+              <button
+                type="button"
+                className="tl-hidden"
+                aria-expanded={false}
+                title={`${t(locale, "showAll")} ${ln.totalCount} ${t(locale, ln.category).toLowerCase()}`}
+                aria-label={`${t(locale, "showAll")} ${ln.totalCount} ${t(locale, ln.category).toLowerCase()}`}
+                onClick={() => toggleLane(ln.category)}
+              >
                 +{ln.hiddenCount}
-              </span>
-            )}
+              </button>
+            ) : ln.canCollapse ? (
+              <button
+                type="button"
+                className="tl-hidden"
+                aria-expanded={true}
+                onClick={() => toggleLane(ln.category)}
+              >
+                {t(locale, "showLess")}
+              </button>
+            ) : null}
           </div>
         ))}
 

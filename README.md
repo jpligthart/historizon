@@ -1,8 +1,8 @@
 # Historizon
 
-Zoomable, searchable history timeline. Overlapping people, empires, eras, wars, discoveries — what happened at the same time.
+Zoomable, searchable history timeline. People, empires, eras, wars, discoveries and culture — side by side.
 
-English UI first, Dutch strings ready. Data lives in SQLite; short Wikipedia extracts are cached on demand.
+Dutch and English UI. Data lives in SQLite; short Wikipedia extracts are cached on demand.
 
 ## Stack
 
@@ -40,6 +40,12 @@ docker compose up --build
 
 Open http://127.0.0.1:8463
 
+Multi-arch image push (needs `IMAGE_REGISTRY` in `.env`):
+
+```powershell
+npm run docker:push
+```
+
 ## Data
 
 - First API start auto-seeds a small curated set if the DB is empty.
@@ -50,11 +56,12 @@ Open http://127.0.0.1:8463
 
 Time is cut into **tiles**, like a map: the closer you zoom in, the smaller the tiles (10, 50 or 250 years). For each tile the API fetches the 15 most notable items per category (notability = number of Wikipedia language editions, minimum 10; 25 for empires/states and eras) whose start falls in it. People, empires and eras also look back (80 / 250 years), because they start before the viewport.
 
-Categories (lanes): people · empires & states (historical countries, empires, dynasties; present-day countries are left out on purpose) · eras (periods, art movements) · events · wars · science & technology (inventions and discoveries) · artworks · buildings.
+Categories (lanes): people · empires & states (historical countries, empires, dynasties; present-day countries are left out on purpose) · eras (periods, art movements) · events · wars · science & technology (inventions and discoveries) · arts & culture (paintings, sculpture, literature, music) · buildings & monuments.
 
 - One SPARQL query per tile covers all categories; tiles are fetched once and kept for 30 days (failed tiles are retried after 10 minutes).
-- `GET /api/items?…&fetch=1` queues the missing tiles for that viewport and returns `pending`; the web app polls until it reaches 0. Tiles you scrolled past are dropped from the queue. Views wider than 1,500 years only show what is cached.
-- The timeline shows at most 6 rows per category, most notable first; a `+n` badge means more items are in range — zoom in to see them.
+- `GET /api/items?…&fetch=1` queues the missing tiles for that viewport and returns `pending` (and `pausedMs` when SPARQL is backing off after a 429/5xx). The web app polls while work remains; if Wikidata is paused it shows that instead of a loading spinner. Tiles you scrolled past are dropped from the queue. Views wider than 1,500 years only show what is cached.
+- Discovered items are shared for everyone on that API instance (SQLite cache).
+- The timeline shows at most 6 rows per category, most notable first; a `+n` badge means more items are in range — zoom in or expand the lane to see them.
 - `npm run ingest -- 1800 2026 50` warms tiles for a range ahead of time (sequential, rate-limited).
 
 ### Search
@@ -82,6 +89,8 @@ All requests honour `Retry-After` and pause the whole service on 429/503. **Set 
 
 Default viewport: last **50 years**. Presets: 10 / 25 / 50 / 100 / 250 / 500. Drag or Shift+wheel (or horizontal trackpad scroll) to pan; Ctrl+wheel to zoom. Click an item to see what happened at the same time.
 
+Language and about/license live in the header menu. The page itself does not scroll: the timeline lanes and the detail panel each scroll on their own.
+
 ## Docker image labels
 
 Both images carry [OCI annotations](https://specs.opencontainers.org/image-spec/annotations/) (`title`, `description`, `source`, `licenses`, `version`, `revision`, `created`). `npm run docker:push` fills in version, git commit and build time, and adds the key annotations to the multi-arch index. Inspect with:
@@ -94,7 +103,7 @@ docker buildx imagetools inspect <registry>/historizon-api:latest --format "{{js
 
 Historizon is free software: you can redistribute it and/or modify it under the terms of the [GNU Affero General Public License v3.0 or later](LICENSE).
 
-Because this is a network service, the AGPL requires that users of a modified, publicly hosted version can get its source code. The app footer links to this repository; if you host a fork, point it at your own repo by setting `VITE_SOURCE_URL` at build time.
+Because this is a network service, the AGPL requires that users of a modified, publicly hosted version can get its source code. The in-app **About** panel links to this repository; if you host a fork, point it at your own repo by setting `VITE_SOURCE_URL` at build time.
 
 ### Content
 

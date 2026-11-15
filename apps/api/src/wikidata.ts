@@ -371,6 +371,14 @@ function minYear(entity: Entity, prop: string): number | null {
   return years.length ? Math.min(...years) : null;
 }
 
+/** Wikipedia article URL for a Wikidata item in the given language, if a sitelink exists. */
+export async function wikipediaSitelink(qid: string, lang: "en" | "nl"): Promise<string | null> {
+  if (!/^Q\d+$/.test(qid)) return null;
+  const entities = await wbgetentities([qid], "sitelinks/urls");
+  const key = lang === "nl" ? "nlwiki" : "enwiki";
+  return entities[0]?.sitelinks?.[key]?.url ?? null;
+}
+
 async function wbgetentities(ids: string[], props: string): Promise<Entity[]> {
   const out: Entity[] = [];
   for (let i = 0; i < ids.length; i += 50) {

@@ -21,6 +21,7 @@ import { Discovery } from "./discovery.js";
 import { rateLimit } from "./rateLimit.js";
 import { SEED_ITEMS } from "./seed-data.js";
 import { throttles } from "./throttle.js";
+import { wikipediaSitelink } from "./wikidata.js";
 import { fetchWikipediaExtract } from "./wikipedia.js";
 
 const app = new Hono();
@@ -143,11 +144,22 @@ app.get("/api/items/:id", rateLimit("enrich", 60), async (c) => {
   const lang = c.req.query("lang") === "nl" ? "nl" : "en";
 
   try {
-    // Dutch extract when viewing in Dutch and a Dutch article exists; otherwise English.
-    if (enrich && lang === "nl" && !item.descriptionNl && item.wikipediaUrlNl) {
-      const extracted = await fetchWikipediaExtract(item.wikipediaUrlNl, "nl");
-      if (extracted) updateDescription(database, id, extracted.extract, extracted.url, "nl");
-    } else if (enrich && !item.description && item.wikipediaUrl && !(lang === "nl" && item.descriptionNl)) {
+    // Dutch UI: resolve nlwiki (from stored URL, Wikidata sitelink, or title guess) then extract.
+    if (enrich && lang === "nl" && !item.descriptionNl) {
+      let nlUrl = item.wikipediaUrlNl;
+      if (!nlUrl && item.wikidataId) {
+        nlUrl = await wikipediaSitelink(item.wikidataId, "nl");
+      }
+      const nlSource = nlUrl ?? item.titleNl ?? item.title;
+      if (nlSource) {
+        const extracted = await fetchWikipediaExtract(nlSource, "nl");
+        if (extracted) updateDescription(database, id, extracted.extract, extracted.url, "nl");
+      }
+      const afterNl = getItem(database, id);
+      if (afterNl) item = rowToItem(afterNl);
+    }
+    // English extract when missing (also the fallback body when there is no Dutch page).
+    if (enrich && !item.description && item.wikipediaUrl) {
       const extracted = await fetchWikipediaExtract(item.wikipediaUrl, "en");
       if (extracted) updateDescription(database, id, extracted.extract, extracted.url, "en");
     }

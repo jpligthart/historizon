@@ -598,6 +598,15 @@ export function setCategoryForQids(database: DatabaseSync, qids: string[], categ
   return Number(res.changes);
 }
 
+/** Set the category of items by id (curated seed items). */
+export function setCategoryForIds(database: DatabaseSync, ids: string[], category: Category): number {
+  if (ids.length === 0) return 0;
+  const res = database
+    .prepare(`UPDATE items SET category = ? WHERE id IN (${ids.map(() => "?").join(",")})`)
+    .run(category, ...ids);
+  return Number(res.changes);
+}
+
 /** Forget fetched tiles for a category so they are fetched again with the current query. */
 export function resetTiles(database: DatabaseSync, category: Category): void {
   database.prepare(`DELETE FROM tiles WHERE key LIKE ?`).run(`${category}:%`);

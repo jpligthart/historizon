@@ -10,6 +10,7 @@ import {
   qidsInCategory,
   resetTiles,
   setCategoryForQids,
+  setCategoryForIds,
   deleteDiscoveredItems,
   getTileState,
   setSearchCache,
@@ -276,6 +277,18 @@ export class Discovery {
    * discovered items in both categories and let the tiles refill with the current queries.
    * Curated seed items stay.
    */
+  /**
+   * One-off: "place" used to mean places in general; it now holds buildings & monuments
+   * only. Move the curated items that predate that change to a fitting lane.
+   */
+  recategorizeCuratedPlaces(): void {
+    const KEY = "recategorize-curated-places-v1";
+    if (hasRun(this.db, KEY)) return;
+    const moved = setCategoryForIds(this.db, ["place-eu"], "state") + setCategoryForIds(this.db, ["place-israel"], "event");
+    markRun(this.db, KEY);
+    console.log(`[migrate] moved ${moved} curated items out of "place"`);
+  }
+
   /**
    * One-off: the Dutch-connection rule got stricter (a country must be ONLY Dutch, so a
    * pandemic that also reached the Netherlands no longer counts). Re-check items that were

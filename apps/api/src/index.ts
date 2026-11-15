@@ -72,6 +72,7 @@ void discovery
   .then(() => discovery.splitStatesFromPeriods())
   .then(() => discovery.cleanupStatesAndPeriods())
   .then(() => discovery.recheckNlLinks())
+  .then(() => discovery.recategorizeCuratedPlaces())
   .then(() => discovery.scheduleNlCheck())
   .catch((err) => console.warn("[startup] data migration failed:", (err as Error).message));
 

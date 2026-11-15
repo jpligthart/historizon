@@ -26,13 +26,44 @@ if (!IMAGE_REGISTRY) {
   process.exit(1);
 }
 
+const SOURCE_URL = "https://github.com/jpligthart/historizon";
+
 const images = [
-  { name: "historizon-api", dockerfile: "apps/api/Dockerfile" },
-  { name: "historizon-web", dockerfile: "apps/web/Dockerfile" },
+  {
+    name: "historizon-api",
+    dockerfile: "apps/api/Dockerfile",
+    pkg: "apps/api/package.json",
+    description: "Historizon API: timeline data (SQLite + FTS5) and cached Wikipedia extracts",
+  },
+  {
+    name: "historizon-web",
+    dockerfile: "apps/web/Dockerfile",
+    pkg: "apps/web/package.json",
+    description: "Historizon web: zoomable timeline of what happened at the same time",
+  },
 ];
+
+function gitRevision() {
+  const r = spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" });
+  if (r.status !== 0) return "unknown";
+  const dirty = spawnSync("git", ["status", "--porcelain"], { encoding: "utf8" }).stdout.trim();
+  return r.stdout.trim() + (dirty ? "-dirty" : "");
+}
+
+const revision = gitRevision();
+const created = new Date().toISOString();
 
 for (const image of images) {
   const tag = `${IMAGE_REGISTRY}/${image.name}:${IMAGE_TAG}`;
+  const pkgVersion = JSON.parse(readFileSync(resolve(process.cwd(), image.pkg), "utf8")).version;
+  const version = IMAGE_TAG !== "latest" ? IMAGE_TAG : pkgVersion;
+  // Labels live in the Dockerfile; build args fill in the dynamic ones. Multi-arch pushes
+  // produce an image index, so repeat the key annotations there (GHCR reads them from the index).
+  const indexAnnotations = {
+    "org.opencontainers.image.source": SOURCE_URL,
+    "org.opencontainers.image.description": image.description,
+    "org.opencontainers.image.licenses": "AGPL-3.0-or-later",
+  };
   const args = [
     "buildx",
     "build",
@@ -43,10 +74,13 @@ for (const image of images) {
     "-t",
     tag,
     "--push",
-    "--label",
-    "org.opencontainers.image.source=https://github.com/example/historizon",
-    "--label",
-    `org.opencontainers.image.title=${image.name}`,
+    "--build-arg",
+    `VERSION=${version}`,
+    "--build-arg",
+    `REVISION=${revision}`,
+    "--build-arg",
+    `CREATED=${created}`,
+    ...Object.entries(indexAnnotations).flatMap(([k, v]) => ["--annotation", `index:${k}=${v}`]),
     ".",
   ];
   console.log(`Pushing ${tag}`);

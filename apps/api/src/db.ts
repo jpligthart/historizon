@@ -81,12 +81,13 @@ export function rowToItem(row: ItemRow): TimelineItem {
     wikipediaUrl: row.wikipedia_url,
     wikipediaUrlNl: row.wikipedia_url_nl,
     wikidataId: row.wikidata_id,
+    descriptionFromWikipedia: row.extract_cached_at !== null,
   };
 }
 
 export function upsertItem(
   database: DatabaseSync,
-  item: Omit<TimelineItem, "description" | "descriptionNl"> & {
+  item: Omit<TimelineItem, "description" | "descriptionNl" | "descriptionFromWikipedia"> & {
     description?: string | null;
     descriptionNl?: string | null;
   },

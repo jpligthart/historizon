@@ -51,3 +51,23 @@ Set `WIKI_USER_AGENT` in `.env` to a real contact string before heavy Wikipedia 
 ## Zoom
 
 Default viewport: last **50 years**. Presets: 10 / 25 / 50 / 100 / 250 / 500. Drag or Shift+wheel (or horizontal trackpad scroll) to pan; Ctrl+wheel to zoom. Click an item to see what happened at the same time.
+
+## Docker image labels
+
+Both images carry [OCI annotations](https://specs.opencontainers.org/image-spec/annotations/) (`title`, `description`, `source`, `licenses`, `version`, `revision`, `created`). `npm run docker:push` fills in version, git commit and build time, and adds the key annotations to the multi-arch index. Inspect with:
+
+```powershell
+docker buildx imagetools inspect <registry>/historizon-api:latest --format "{{json .Image}}"
+```
+
+## License
+
+Historizon is free software: you can redistribute it and/or modify it under the terms of the [GNU Affero General Public License v3.0 or later](LICENSE).
+
+Because this is a network service, the AGPL requires that users of a modified, publicly hosted version can get its source code. The app footer links to this repository; if you host a fork, point it at your own repo by setting `VITE_SOURCE_URL` at build time.
+
+### Content
+
+- Summaries fetched from **Wikipedia** are available under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). The app credits them with a link to the source article and the license wherever they appear.
+- Data from **Wikidata** is [CC0](https://creativecommons.org/publicdomain/zero/1.0/).
+- The curated seed descriptions are part of this repository and fall under the AGPL like the code.

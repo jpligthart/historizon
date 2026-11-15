@@ -3,6 +3,7 @@ import { CATEGORY_COLORS, t, type Locale } from "./i18n";
 import { formatPeriod, formatYearsCompact, isOngoing, isPoint } from "./timelineLayout";
 
 const CONCURRENT_LIMIT = 10;
+export const CC_BY_SA_URL = "https://creativecommons.org/licenses/by-sa/4.0/";
 
 type Props = {
   locale: Locale;
@@ -58,7 +59,22 @@ export function DetailPanel({ locale, item, detail, concurrent, nowYear, labelOf
       </div>
 
       {loaded ? (
-        <p className="detail-text">{description || t(locale, "noExtract")}</p>
+        <div className="detail-body">
+          <p className="detail-text">{description || t(locale, "noExtract")}</p>
+          {description && detail.descriptionFromWikipedia && (
+            <p className="attribution">
+              {t(locale, "sourcePrefix")}{" "}
+              <a href={detail.wikipediaUrl ?? wikipediaHref(item, "en", item.title)} target="_blank" rel="noreferrer">
+                Wikipedia
+              </a>
+              {", "}
+              {t(locale, "licensedUnder")}{" "}
+              <a href={CC_BY_SA_URL} target="_blank" rel="noreferrer">
+                CC BY-SA 4.0
+              </a>
+            </p>
+          )}
+        </div>
       ) : (
         <div className="skeleton" aria-busy="true">
           <div style={{ width: "100%" }} />

@@ -6,7 +6,7 @@
 .cursor
 **/*.md
 !README.md
-data/*.sqlite
-data/*.sqlite-*
+**/*.sqlite
+**/*.sqlite-*
 agent-transcripts
 agent-tools

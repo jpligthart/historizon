@@ -9,7 +9,10 @@ import {
 } from "@historizon/shared";
 import { fetchItem, fetchItems, fetchMeta } from "./api";
 import { Timeline } from "./Timeline";
-import { DetailPanel } from "./DetailPanel";
+import { CC_BY_SA_URL, DetailPanel } from "./DetailPanel";
+
+/** AGPL §13: users interacting over a network must be offered the source. */
+const SOURCE_URL = import.meta.env.VITE_SOURCE_URL || "https://github.com/jpligthart/historizon";
 import { CATEGORY_COLORS, t, type Locale } from "./i18n";
 
 /** Current moment as a fractional year, e.g. 2026.87. */
@@ -333,6 +336,25 @@ export function App() {
           onSelect={select}
         />
       </main>
+
+      <footer className="footer">
+        <span>
+          {t(locale, "freeSoftware")}{" "}
+          <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer">
+            AGPL-3.0
+          </a>
+          {" · "}
+          <a href={SOURCE_URL} target="_blank" rel="noreferrer">
+            {t(locale, "sourceCode")}
+          </a>
+        </span>
+        <span>
+          {t(locale, "footerWiki")}{" "}
+          <a href={CC_BY_SA_URL} target="_blank" rel="noreferrer">
+            CC BY-SA 4.0
+          </a>
+        </span>
+      </footer>
     </div>
   );
 }

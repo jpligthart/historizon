@@ -28,6 +28,8 @@ export interface TimelineItem {
   wikipediaUrl: string | null;
   wikipediaUrlNl: string | null;
   wikidataId: string | null;
+  /** True when the description is a cached Wikipedia extract (CC BY-SA 4.0, needs attribution). */
+  descriptionFromWikipedia: boolean;
 }
 
 export interface TimelineQuery {

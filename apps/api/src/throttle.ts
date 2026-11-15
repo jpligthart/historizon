@@ -120,6 +120,8 @@ export const throttles = {
   sparql: new Throttle("sparql", 1, Number(process.env.SPARQL_MIN_INTERVAL_MS ?? 6000)),
   /** Wikidata Action API (wbgetentities). */
   wikidata: new Throttle("wikidata", 1, 200),
+  /** Wikidata Action API for background upkeep (person domains): slow, so it doesn't trip 429s. */
+  wikidataBackground: new Throttle("wikidata-bg", 1, 1500),
   /** Official Wikidata Query Service, only for small class-hierarchy lookups. */
   wdqs: new Throttle("wdqs", 1, 1000),
   /** Wikipedia / MediaWiki Action API. */

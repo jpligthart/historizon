@@ -74,7 +74,10 @@ void discovery
   .then(() => discovery.cleanupStatesAndPeriods())
   .then(() => discovery.recheckNlLinks())
   .then(() => discovery.recategorizeCuratedPlaces())
-  .then(() => discovery.scheduleNlCheck())
+  .then(() => {
+    discovery.scheduleNlCheck();
+    discovery.scheduleDomainCheck();
+  })
   .catch((err) => console.warn("[startup] data migration failed:", (err as Error).message));
 
 // Same-origin only (Vite proxy / nginx). No open CORS — third-party sites cannot drive the API.

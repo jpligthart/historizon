@@ -1,8 +1,8 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import type { Category, TimelineItem } from "@historizon/shared";
-import { CATEGORIES, NL_BOOST } from "@historizon/shared";
+import type { Category, Domain, TimelineItem } from "@historizon/shared";
+import { CATEGORIES, DOMAIN_DECAY, NL_BOOST, DOMAINS } from "@historizon/shared";
 import type { ClassCache, WikidataItem } from "./wikidata.js";
 
 export type ItemRow = {
@@ -20,6 +20,7 @@ export type ItemRow = {
   extract_cached_at: string | null;
   importance: number | null;
   nl_link: number | null;
+  domain: string | null;
 };
 
 let db: DatabaseSync | null = null;
@@ -41,7 +42,7 @@ export function openDb(): DatabaseSync {
 
 const ITEM_COLUMNS = [
   "id", "title", "title_nl", "category", "start_year", "end_year", "description", "description_nl",
-  "wikipedia_url", "wikipedia_url_nl", "wikidata_id", "extract_cached_at", "importance", "nl_link",
+  "wikipedia_url", "wikipedia_url_nl", "wikidata_id", "extract_cached_at", "importance", "nl_link", "domain",
 ];
 
 function itemsTableSql(name: string): string {
@@ -60,7 +61,8 @@ function itemsTableSql(name: string): string {
       wikidata_id TEXT,
       extract_cached_at TEXT,
       importance INTEGER,
-      nl_link INTEGER
+      nl_link INTEGER,
+      domain TEXT
     );`;
 }
 
@@ -152,6 +154,10 @@ function migrate(database: DatabaseSync): void {
     // Notability: number of Wikipedia language editions (Wikidata sitelinks).
     database.exec(`ALTER TABLE items ADD COLUMN importance INTEGER`);
   }
+  if (!columns.has("domain")) {
+    // Field an item belongs to (Domain); NULL = not determined yet. Filled for persons only, for now.
+    database.exec(`ALTER TABLE items ADD COLUMN domain TEXT`);
+  }
   database.exec(`CREATE INDEX IF NOT EXISTS idx_items_wiki_url ON items(wikipedia_url)`);
 }
 
@@ -171,12 +177,13 @@ export function rowToItem(row: ItemRow): TimelineItem {
     descriptionFromWikipedia: row.extract_cached_at !== null,
     importance: row.importance,
     nlLink: row.nl_link === null ? null : row.nl_link === 1,
+    domain: (DOMAINS as readonly string[]).includes(row.domain ?? "") ? (row.domain as Domain) : null,
   };
 }
 
 export function upsertItem(
   database: DatabaseSync,
-  item: Omit<TimelineItem, "description" | "descriptionNl" | "descriptionFromWikipedia" | "importance" | "nlLink"> & {
+  item: Omit<TimelineItem, "description" | "descriptionNl" | "descriptionFromWikipedia" | "importance" | "nlLink" | "domain"> & {
     description?: string | null;
     descriptionNl?: string | null;
   },
@@ -276,22 +283,31 @@ export function queryItems(
     return rows.map(rowToItem);
   }
 
-  // Level of detail: per category keep only the most notable items in the range.
+  // Level of detail: per category keep only the most notable items in the range. Persons
+  // from the same domain count DOMAIN_DECAY less each (2nd ×0.5, 3rd ×0.25…), so the
+  // selection mixes domains; the timeline layout applies the same rule.
   const perCategory = Math.min(Math.max(opts.perCategory ?? limit, 1), 2000);
+  const score = `COALESCE(i.importance, ${SEED_IMPORTANCE})
+          * ${opts.lens === "nl" ? `(CASE WHEN i.nl_link = 1 THEN ${NL_BOOST} ELSE 1 END)` : "1"}`;
   const rows = database
     .prepare(
       `
     SELECT * FROM (
-      SELECT i.*, ROW_NUMBER() OVER (
-        PARTITION BY i.category
-        ORDER BY COALESCE(i.importance, ${SEED_IMPORTANCE})
-          * ${opts.lens === "nl" ? `(CASE WHEN i.nl_link = 1 THEN ${NL_BOOST} ELSE 1 END)` : "1"} DESC,
-          i.start_year ASC
+      SELECT d.*, ROW_NUMBER() OVER (
+        PARTITION BY d.category
+        ORDER BY d.score * (CASE WHEN d.diversify THEN ${decay("d.drn")} ELSE 1 END) DESC, d.start_year ASC
       ) AS rn
-      FROM items i
-      WHERE i.start_year <= ?
-        AND COALESCE(i.end_year, 100000) >= ?  -- NULL end = ongoing
-        ${categoryClause}
+      FROM (
+        SELECT i.*, ${score} AS score,
+          (i.category = 'person' AND i.domain IS NOT NULL AND i.domain <> 'other') AS diversify,
+          ROW_NUMBER() OVER (
+            PARTITION BY i.category, i.domain ORDER BY ${score} DESC, i.start_year ASC
+          ) - 1 AS drn
+        FROM items i
+        WHERE i.start_year <= ?
+          AND COALESCE(i.end_year, 100000) >= ?  -- NULL end = ongoing
+          ${categoryClause}
+      ) d
     )
     WHERE rn <= ?
     ORDER BY start_year ASC
@@ -305,6 +321,38 @@ export function queryItems(
 
 /** Curated seed items have no sitelink count; rank them as fairly notable. */
 const SEED_IMPORTANCE = 120;
+
+/** SQL for DOMAIN_DECAY ** n (SQLite may lack pow()); n is capped, beyond that it is ~0 anyway. */
+function decay(n: string): string {
+  const terms = Array.from({ length: 12 }, (_, k) => `WHEN ${k} THEN ${DOMAIN_DECAY ** k}`).join(" ");
+  return `(CASE MIN(${n}, 12) ${terms} ELSE ${DOMAIN_DECAY ** 12} END)`;
+}
+
+// ---------- Person domain (what someone is known for) ----------
+
+/** Persons whose domain hasn't been looked up yet. */
+export function getUncheckedDomainQids(database: DatabaseSync, limit: number): string[] {
+  return (
+    database
+      .prepare(
+        `SELECT wikidata_id FROM items WHERE category = 'person' AND domain IS NULL AND wikidata_id IS NOT NULL LIMIT ?`,
+      )
+      .all(limit) as Array<{ wikidata_id: string }>
+  ).map((r) => r.wikidata_id);
+}
+
+/** Record looked-up domains; checked ids without a result get "other" (so they aren't retried). */
+export function setDomains(database: DatabaseSync, checked: string[], domains: Map<string, Domain>): void {
+  const stmt = database.prepare(`UPDATE items SET domain = ? WHERE wikidata_id = ?`);
+  database.exec("BEGIN");
+  try {
+    for (const q of checked) stmt.run(domains.get(q) ?? "other", q);
+    database.exec("COMMIT");
+  } catch (err) {
+    database.exec("ROLLBACK");
+    throw err;
+  }
+}
 
 
 // ---------- Dutch connection (Nederland-bril) ----------

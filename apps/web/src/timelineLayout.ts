@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { Category, TimelineItem } from "@historizon/shared";
+import { DOMAIN_DECAY } from "@historizon/shared";
 
 export const BAR_H = 26;
 export const PITCH = 32;
@@ -43,6 +44,42 @@ const DEFAULT_IMPORTANCE = 120;
 
 const pct = (v: number) => `${(v * 100).toFixed(3)}%`;
 
+/**
+ * Order a lane most-notable-first, but let each further person from the same domain count
+ * DOMAIN_DECAY less (2nd politician ×0.5, 3rd ×0.25…), so the lane mixes politicians with
+ * scientists, artists and musicians. Items without a known domain ("other", not yet looked
+ * up, non-persons) are ranked on notability alone. Same rule as the API's selection.
+ */
+export function diversify<T>(entries: T[], itemOf: (e: T) => TimelineItem, rank: (i: TimelineItem) => number): T[] {
+  const byGroup = new Map<string, T[]>();
+  entries.forEach((e, idx) => {
+    const { domain } = itemOf(e);
+    const key = domain && domain !== "other" ? domain : `#${idx}`;
+    const g = byGroup.get(key);
+    if (g) g.push(e);
+    else byGroup.set(key, [e]);
+  });
+  // Each group is already in rank order (entries are sorted); take heads greedily.
+  const groups = [...byGroup.values()].map((list) => ({ list, next: 0, factor: 1 }));
+  const out: T[] = [];
+  while (out.length < entries.length) {
+    let best: (typeof groups)[number] | null = null;
+    let bestScore = -Infinity;
+    for (const g of groups) {
+      if (g.next >= g.list.length) continue;
+      const score = rank(itemOf(g.list[g.next])) * g.factor;
+      if (score > bestScore) {
+        best = g;
+        bestScore = score;
+      }
+    }
+    if (!best) break;
+    out.push(best.list[best.next++]);
+    best.factor *= DOMAIN_DECAY;
+  }
+  return out;
+}
+
 export function isPoint(item: TimelineItem): boolean {
   return item.endYear !== null && item.endYear === item.startYear;
 }
@@ -82,10 +119,11 @@ export function layoutTimeline(opts: {
   let y = 0;
 
   for (const category of categories) {
-    const inLane = items
+    const sorted = items
       .filter((i) => i.category === category)
       .map((i) => ({ item: i, s: i.startYear, e: i.endYear ?? now }))
       .sort((a, b) => rank(b.item) - rank(a.item) || a.s - b.s);
+    const inLane = category === "person" ? diversify(sorted, (x) => x.item, rank) : sorted;
 
     /** Occupied [start, end] pixel intervals per row. */
     const rows: Array<Array<[number, number]>> = [];

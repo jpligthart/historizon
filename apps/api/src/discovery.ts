@@ -15,11 +15,13 @@ import {
   getTileState,
   setSearchCache,
   setTileState,
+  getUncheckedDomainQids,
   getUncheckedNlQids,
+  setDomains,
   setNlLinks,
   upsertWikidataItems,
 } from "./db.js";
-import { fetchByQids, fetchTile, qidsInCategoryRoots, qidsWithNlLink, type ClassCache } from "./wikidata.js";
+import { fetchByQids, fetchPersonDomains, fetchTile, qidsInCategoryRoots, qidsWithNlLink, type ClassCache } from "./wikidata.js";
 import { resolveWikidataIds, searchWikipedia, type SearchHit, type WikiLang } from "./wikipedia.js";
 
 /**
@@ -186,7 +188,10 @@ export class Discovery {
       for (const c of cats) setTileState(this.db, key(c), "ok", items.filter((i) => i.category === c).length);
       console.log(`[discovery] ${label} [${cats.join(",")}]: ${items.length} items, ${added} new (${Date.now() - t0} ms)`);
       // New items from global tiles don't know yet whether they're Dutch.
-      if (added > 0) this.scheduleNlCheck();
+      if (added > 0) {
+        this.scheduleNlCheck();
+        this.scheduleDomainCheck();
+      }
     } catch (err) {
       for (const c of cats) setTileState(this.db, key(c), "failed", 0);
       console.warn(`[discovery] tile ${label} failed:`, (err as Error).message);
@@ -228,6 +233,35 @@ export class Discovery {
         console.warn(`[nl] check failed (will retry later):`, (err as Error).message);
       } finally {
         this.nlCheckRunning = false;
+      }
+    })();
+  }
+
+  // ---------- Person domain (background) ----------
+
+  private domainCheckRunning = false;
+
+  /**
+   * Look up what stored persons are known for (politics, science, music…), 25 per request,
+   * until none are left. Used to mix domains in the person lane. Safe to call often.
+   */
+  scheduleDomainCheck(): void {
+    if (this.domainCheckRunning) return;
+    this.domainCheckRunning = true;
+    void (async () => {
+      let total = 0;
+      try {
+        for (;;) {
+          const batch = getUncheckedDomainQids(this.db, 25);
+          if (batch.length === 0) break;
+          setDomains(this.db, batch, await fetchPersonDomains(batch, this.classCache));
+          total += batch.length;
+        }
+        if (total) console.log(`[domain] classified ${total} persons`);
+      } catch (err) {
+        console.warn(`[domain] check failed (will retry later):`, (err as Error).message);
+      } finally {
+        this.domainCheckRunning = false;
       }
     })();
   }
@@ -348,6 +382,7 @@ export class Discovery {
         );
         upsertWikidataItems(this.db, items);
         this.scheduleNlCheck();
+        this.scheduleDomainCheck();
         const known = new Set(items.map((i) => i.qid));
         const qids = ranked.map((h) => h.qid).filter((q) => known.has(q));
         setSearchCache(this.db, key, qids);

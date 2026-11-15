@@ -1,4 +1,4 @@
-import type { Category } from "@historizon/shared";
+import type { Category, Domain } from "@historizon/shared";
 import { politeFetch, throttles } from "./throttle.js";
 
 /**
@@ -414,13 +414,18 @@ const ALL_ROOTS = ROOTS.flatMap((r) => r.qids);
  * For each class, the ROOTS classes it is a (transitive) subclass of. One small query on the
  * official Wikidata Query Service, which is fast for fixed starting classes; results cached.
  */
-async function classRoots(classes: string[], cache: ClassCache): Promise<Map<string, string[]>> {
+function classRoots(classes: string[], cache: ClassCache): Promise<Map<string, string[]>> {
+  return subclassRoots(classes, ALL_ROOTS, cache);
+}
+
+/** For each class, which of `roots` it is (transitively, via P279) a subclass of. Cached. */
+async function subclassRoots(classes: string[], roots: string[], cache: ClassCache): Promise<Map<string, string[]>> {
   const unique = [...new Set(classes)];
   const unknown = unique.filter((c) => cache.get(c) === undefined).slice(0, 200);
   if (unknown.length) {
     const query = `SELECT ?c ?root WHERE {
   VALUES ?c { ${unknown.map((c) => `wd:${c}`).join(" ")} }
-  VALUES ?root { ${ALL_ROOTS.map((c) => `wd:${c}`).join(" ")} }
+  VALUES ?root { ${roots.map((c) => `wd:${c}`).join(" ")} }
   ?c wdt:P279* ?root
 }`;
     const res = await politeFetch(throttles.wdqs, WDQS_URL, {
@@ -556,5 +561,108 @@ export async function qidsWithNlLink(qids: string[]): Promise<Set<string>> {
     const json = (await res.json()) as { results: { bindings: Binding[] } };
     for (const b of json.results.bindings) out.add(qidOf(b.item!.value));
   }
+  return out;
+}
+
+// ---------- What a person is known for (domain) ----------
+
+/** Root occupations per domain; an occupation counts when it is a (P279*) subclass of one. */
+const OCCUPATION_ROOTS: Record<Exclude<Domain, "other">, string[]> = {
+  // politician, monarch, military personnel, diplomat, revolutionary, statesperson
+  politics: ["Q82955", "Q116", "Q47064", "Q193391", "Q3242115", "Q372436"],
+  // scientist, mathematician, engineer, inventor, physician, explorer
+  science: ["Q901", "Q170790", "Q81096", "Q205375", "Q39631", "Q11900058"],
+  // philosopher, theologian, cleric, priest
+  thought: ["Q4964182", "Q1234713", "Q250867", "Q42603"],
+  // writer, poet
+  literature: ["Q36180", "Q49757"],
+  // painter, sculptor, architect, visual artist, photographer
+  arts: ["Q1028181", "Q1281618", "Q42973", "Q3391743", "Q33231"],
+  // musician, composer, singer
+  music: ["Q639669", "Q36834", "Q177220"],
+  // actor, film director
+  film: ["Q33999", "Q2526255"],
+  // athlete
+  sport: ["Q2066131"],
+  // businessperson, entrepreneur
+  business: ["Q43845", "Q131524"],
+};
+
+/**
+ * When one occupation falls under several domains (a screenwriter is a writer and film
+ * maker; a singer is an artist), the more specific domain wins: earlier in this list.
+ */
+const DOMAIN_PRECEDENCE: Array<Exclude<Domain, "other">> = [
+  "sport", "music", "film", "literature", "thought", "science", "politics", "business", "arts",
+];
+
+const ROOT_DOMAIN = new Map<string, Exclude<Domain, "other">>(
+  Object.entries(OCCUPATION_ROOTS).flatMap(([d, qs]) => qs.map((q) => [q, d as Exclude<Domain, "other">])),
+);
+const ALL_OCCUPATION_ROOTS = [...ROOT_DOMAIN.keys()];
+
+/** A person's occupations (P106) in the order editors listed them, best rank only. */
+async function occupationsOf(qid: string): Promise<string[]> {
+  const params = new URLSearchParams({ action: "wbgetclaims", entity: qid, property: "P106", format: "json" });
+  const res = await politeFetch(throttles.wikidataBackground, `${WIKIDATA_API}?${params}`, {
+    headers: { Accept: "application/json" },
+    retries: 4,
+    backoffMs: 5000,
+  });
+  if (!res.ok) throw new Error(`wbgetclaims ${res.status}`);
+  const data = (await res.json()) as { claims?: Record<string, Snak[]> };
+  return itemIds({ id: qid, claims: data.claims }, "P106");
+}
+
+/** Which of the given persons held a position (P39) or a noble title (P97). */
+async function qidsWithOfficeOrTitle(qids: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (qids.length === 0) return out;
+  const query = `SELECT DISTINCT ?item WHERE {
+  VALUES ?item { ${qids.map((q) => `wd:${q}`).join(" ")} }
+  { ?item wdt:P39 ?x } UNION { ?item wdt:P97 ?y }
+}`;
+  const res = await politeFetch(throttles.wdqs, WDQS_URL, {
+    method: "POST",
+    headers: { Accept: "application/sparql-results+json", "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ query: PREFIXES + query }),
+    timeoutMs: 30_000,
+  });
+  if (!res.ok) throw new Error(`WDQS ${res.status}`);
+  const json = (await res.json()) as { results: { bindings: Binding[] } };
+  for (const b of json.results.bindings) out.add(qidOf(b.item!.value));
+  return out;
+}
+
+/**
+ * What each person is mainly known for: the domain of their FIRST listed occupation (P106)
+ * that fits one, as Wikidata editors tend to list the main occupation first. Without one,
+ * a political office (P39) or noble title (P97) means politics; otherwise "other".
+ * Meant for background use: waits out rate limits. `cache` is shared with the class cache,
+ * so keys are prefixed.
+ */
+export async function fetchPersonDomains(qids: string[], cache: ClassCache): Promise<Map<string, Domain>> {
+  const ids = [...new Set(qids.filter((q) => /^Q\d+$/.test(q)))];
+  const out = new Map<string, Domain>();
+  if (ids.length === 0) return out;
+  const occupations = new Map<string, string[]>();
+  for (const q of ids) occupations.set(q, await occupationsOf(q));
+  const occCache: ClassCache = {
+    get: (q) => cache.get(`occ:${q}`),
+    set: (q, roots) => cache.set(`occ:${q}`, roots),
+  };
+  const rootsOf = await subclassRoots([...occupations.values()].flat(), ALL_OCCUPATION_ROOTS, occCache);
+  for (const [q, occs] of occupations) {
+    for (const occ of occs) {
+      const domains = new Set((rootsOf.get(occ) ?? []).map((r) => ROOT_DOMAIN.get(r)));
+      const domain = DOMAIN_PRECEDENCE.find((d) => domains.has(d));
+      if (domain) {
+        out.set(q, domain);
+        break;
+      }
+    }
+  }
+  const political = await qidsWithOfficeOrTitle(ids.filter((q) => !out.has(q)));
+  for (const q of ids) if (!out.has(q)) out.set(q, political.has(q) ? "politics" : "other");
   return out;
 }

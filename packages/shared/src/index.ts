@@ -23,6 +23,35 @@ export const DEFAULT_ZOOM_YEARS = 50;
  */
 export const NL_BOOST = 2.5;
 
+/**
+ * Domain: the field an item belongs to, one vocabulary for every category, so that e.g.
+ * "music" can later cover Bach, the gramophone and Woodstock alike. Not a subdivision within
+ * a lane (painting vs novel); that would be a separate field. "other" = looked up, no fit.
+ * Currently filled for persons only (from their first fitting Wikidata occupation, or a
+ * political office/noble title when none fits); null elsewhere.
+ */
+export const DOMAINS = [
+  "politics",
+  "science",
+  "thought",
+  "literature",
+  "arts",
+  "music",
+  "film",
+  "sport",
+  "business",
+  "other",
+] as const;
+
+export type Domain = (typeof DOMAINS)[number];
+
+/**
+ * Diversity in the person lane: each further person from the same domain counts this much
+ * less (×0.5, ×0.25…), so the lane mixes politicians with scientists, artists and musicians
+ * instead of showing only heads of state. The most notable person of each domain is unaffected.
+ */
+export const DOMAIN_DECAY = 0.5;
+
 /** Integer year; negative = BCE. */
 export type Year = number;
 
@@ -44,6 +73,8 @@ export interface TimelineItem {
   importance: number | null;
   /** Has a Dutch connection (nationality, location, maker, origin…); null = not yet known. */
   nlLink: boolean | null;
+  /** Field the item belongs to (see DOMAINS); null = not determined (yet) or not applicable. */
+  domain: Domain | null;
 }
 
 export interface TimelineQuery {

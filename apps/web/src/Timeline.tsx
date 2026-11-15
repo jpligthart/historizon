@@ -37,6 +37,8 @@ type Props = {
   zoomPresets: readonly number[];
   /** Nederland-bril: rank Dutch items this many times higher (1 = off). */
   nlBoost?: number;
+  /** Rows per lane before items are left out (the "Rijen" setting). */
+  maxRows?: number;
   onZoom: (years: number) => void;
 };
 
@@ -84,6 +86,7 @@ export function Timeline({
   wikiPaused = false,
   zoomPresets,
   nlBoost = 1,
+  maxRows,
   onZoom,
 }: Props) {
   const span = Math.max(end - start, 1e-6);
@@ -135,10 +138,11 @@ export function Timeline({
         selectedId,
         expanded,
         nlBoost,
+        maxRows,
         measure: measureLabel,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items, categories, start, end, now, width, labelOf, selectedId, expanded, nlBoost, fontEpoch],
+    [items, categories, start, end, now, width, labelOf, selectedId, expanded, nlBoost, maxRows, fontEpoch],
   );
 
 

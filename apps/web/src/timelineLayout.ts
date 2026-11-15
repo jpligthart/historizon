@@ -37,7 +37,7 @@ export type Lane = {
   canCollapse: boolean;
 };
 
-/** Rows per lane; the least notable items that do not fit are left out (level of detail). */
+/** Default rows per lane; the least notable items that do not fit are left out (level of detail). */
 export const MAX_ROWS = 6;
 /** Curated items without a sitelink count rank like this (matches the API). */
 const DEFAULT_IMPORTANCE = 120;
@@ -104,12 +104,14 @@ export function layoutTimeline(opts: {
   selectedId?: string | null;
   /** Nederland-bril: rank items with a Dutch connection this many times higher. */
   nlBoost?: number;
-  /** Categories shown in full instead of capped at MAX_ROWS. */
+  /** Rows per lane before items are left out (user setting); default MAX_ROWS. */
+  maxRows?: number;
+  /** Categories shown in full instead of capped at maxRows. */
   expanded?: ReadonlySet<Category>;
   labelOf: (item: TimelineItem) => string;
   measure: (text: string) => number;
 }): { lanes: Lane[]; bars: Bar[]; bodyHeight: number } {
-  const { items, categories, start, end, now, labelOf, measure, selectedId, expanded, nlBoost = 1 } = opts;
+  const { items, categories, start, end, now, labelOf, measure, selectedId, expanded, nlBoost = 1, maxRows: rowCap = MAX_ROWS } = opts;
   const span = Math.max(end - start, 1e-6);
   const W = Math.max(opts.width, 1);
   const lanes: Lane[] = [];
@@ -129,7 +131,7 @@ export function layoutTimeline(opts: {
     const rows: Array<Array<[number, number]>> = [];
     const laneTop = y;
     let hiddenCount = 0;
-    const maxRows = expanded?.has(category) ? Infinity : MAX_ROWS;
+    const maxRows = expanded?.has(category) ? Infinity : rowCap;
 
     for (const { item, s, e } of inLane) {
       const label = labelOf(item);
@@ -196,7 +198,7 @@ export function layoutTimeline(opts: {
       height,
       hiddenCount,
       totalCount: inLane.length,
-      canCollapse: maxRows === Infinity && rows.length > MAX_ROWS,
+      canCollapse: maxRows === Infinity && rows.length > rowCap,
     });
     y += height;
   }

@@ -31,8 +31,35 @@ const NOW = currentFractionalYear();
 const NOW_YEAR = Math.floor(NOW);
 /** A little breathing room to the right of "now". */
 const RIGHT_PAD = 0.03;
-/** Most notable items per category in view (level of detail). */
-const PER_CATEGORY = 25;
+/**
+ * "Rijen" setting: rows per lane, and how many of the most notable items per category to
+ * load for it (more rows need more items to fill them).
+ */
+const ROW_PRESETS = [
+  { key: "compact", rows: 4, perCategory: 20 },
+  { key: "normal", rows: 6, perCategory: 25 },
+  { key: "roomy", rows: 10, perCategory: 40 },
+  { key: "max", rows: 15, perCategory: 60 },
+] as const;
+type RowPreset = (typeof ROW_PRESETS)[number]["key"];
+const ROWS_KEY = "historizon.rows";
+
+function readRowsPref(): RowPreset {
+  try {
+    const v = localStorage.getItem(ROWS_KEY);
+    return ROW_PRESETS.find((p) => p.key === v)?.key ?? "normal";
+  } catch {
+    return "normal";
+  }
+}
+
+function writeRowsPref(preset: RowPreset): void {
+  try {
+    localStorage.setItem(ROWS_KEY, preset);
+  } catch {
+    // Storage blocked (private mode): the choice just isn't remembered.
+  }
+}
 const POLL_MS = 1500;
 /** Search results shown in the dropdown. */
 const MAX_RESULTS = 8;
@@ -64,6 +91,12 @@ export function App() {
   // Nederland-bril: follows the language (on for NL, off for EN) until the user picks.
   const [lensPref, setLensPref] = useState<boolean | null>(readLensPref);
   const lensOn = lensPref ?? locale === "nl";
+  const [rowsPref, setRowsPref] = useState<RowPreset>(readRowsPref);
+  const rowPreset = ROW_PRESETS.find((p) => p.key === rowsPref) ?? ROW_PRESETS[1];
+  const chooseRows = (preset: RowPreset) => {
+    setRowsPref(preset);
+    writeRowsPref(preset);
+  };
   const toggleLens = () => {
     const next = !lensOn;
     setLensPref(next);
@@ -156,7 +189,7 @@ export function App() {
     let timer = 0;
     let polls = 0;
     const load = () => {
-      fetchItems({ from: start, to: end, limit: 2000, perCategory: PER_CATEGORY, discover: true, lens: lensOn ? "nl" : null, signal: ctrl.signal })
+      fetchItems({ from: start, to: end, limit: 2000, perCategory: rowPreset.perCategory, discover: true, lens: lensOn ? "nl" : null, signal: ctrl.signal })
         .then(({ items: next, pending, pausedMs }) => {
           setItems(next);
           const paused = pausedMs > 0;
@@ -178,7 +211,7 @@ export function App() {
       ctrl.abort();
       window.clearTimeout(timer);
     };
-  }, [start, end, refreshTick, lensOn]);
+  }, [start, end, refreshTick, lensOn, rowPreset.perCategory]);
 
   // Search: Wikipedia (via the API, cached server-side) + local database, relevance order.
   useEffect(() => {
@@ -535,6 +568,24 @@ export function App() {
                   ))}
                 </div>
               </div>
+              <div className="menu-row">
+                <span className="menu-label">{t(locale, "rows")}</span>
+                <div role="group" aria-label={t(locale, "rowsHint")} className="segmented">
+                  {ROW_PRESETS.map((p) => (
+                    <button
+                      key={p.key}
+                      type="button"
+                      role="menuitemradio"
+                      className={`seg${rowsPref === p.key ? " on" : ""}`}
+                      aria-checked={rowsPref === p.key}
+                      title={`${p.rows} ${t(locale, "rowsUnit")}`}
+                      onClick={() => chooseRows(p.key)}
+                    >
+                      {t(locale, `rows_${p.key}`)}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <button
                 type="button"
                 className="menu-item"
@@ -701,6 +752,7 @@ export function App() {
           onNow={goNow}
           zoomPresets={ZOOM_PRESETS_YEARS}
           nlBoost={lensOn ? NL_BOOST : 1}
+          maxRows={rowPreset.rows}
           onZoom={setZoom}
           loadingMore={loadingMore}
           wikiPaused={wikiPaused}

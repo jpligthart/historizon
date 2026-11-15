@@ -54,11 +54,13 @@ export async function fetchWikipediaExtract(
   };
 }
 
+export type SearchHit = { qid: string; title: string };
+
 /**
- * Full-text search on Wikipedia; returns the Wikidata ids of the hits in relevance order.
- * One request: generator=search + pageprops.
+ * Full-text search on Wikipedia; returns the hits (Wikidata id + page title) in relevance
+ * order. One request: generator=search + pageprops.
  */
-export async function searchWikipedia(q: string, lang: WikiLang, limit = 12): Promise<string[]> {
+export async function searchWikipedia(q: string, lang: WikiLang, limit = 12): Promise<SearchHit[]> {
   const params = new URLSearchParams({
     action: "query",
     generator: "search",
@@ -79,12 +81,12 @@ export async function searchWikipedia(q: string, lang: WikiLang, limit = 12): Pr
   });
   if (!res.ok) throw new Error(`Wikipedia search ${res.status}`);
   const data = (await res.json()) as {
-    query?: { pages?: Array<{ index?: number; pageprops?: { wikibase_item?: string } }> };
+    query?: { pages?: Array<{ index?: number; title: string; pageprops?: { wikibase_item?: string } }> };
   };
   return (data.query?.pages ?? [])
     .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
-    .map((p) => p.pageprops?.wikibase_item)
-    .filter((x): x is string => !!x);
+    .filter((p) => !!p.pageprops?.wikibase_item)
+    .map((p) => ({ qid: p.pageprops!.wikibase_item!, title: p.title }));
 }
 
 /**

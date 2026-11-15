@@ -11,7 +11,7 @@ import {
   upsertWikidataItems,
 } from "./db.js";
 import { fetchByQids, fetchTile, type ClassCache } from "./wikidata.js";
-import { resolveWikidataIds, searchWikipedia, type WikiLang } from "./wikipedia.js";
+import { resolveWikidataIds, searchWikipedia, type SearchHit, type WikiLang } from "./wikipedia.js";
 
 /**
  * Viewport-driven discovery, like map tiles. Time is cut into tiles whose size depends on
@@ -201,18 +201,32 @@ export class Discovery {
    */
   async search(q: string, lang: WikiLang): Promise<{ qids: string[]; remote: "cached" | "fetched" | "failed" }> {
     const norm = q.trim().toLowerCase().replace(/\s+/g, " ");
-    const key = `${lang}:${norm}`;
+    // v2: fuzzy fallback + title-similarity ranking (older cached orderings are ignored).
+    const key = `v2:${lang}:${norm}`;
     const cached = getSearchCache(this.db, key);
     if (cached && Date.now() - cached.fetchedAt < SEARCH_TTL_MS) return { qids: cached.qids, remote: "cached" };
 
     let inflight = this.searches.get(key);
     if (!inflight) {
       inflight = (async () => {
-        const hits = await searchWikipedia(norm, lang);
-        const items = await fetchByQids(hits, this.classCache);
+        let hits = await searchWikipedia(norm, lang);
+        // Wikipedia matches whole words, so a typo ("janssen" for "jansen") can miss the
+        // obvious article entirely. If no hit's title resembles the query, retry fuzzily.
+        if (!hits.some((h) => similarity(h.title, norm) >= CLOSE_MATCH)) {
+          const fuzzy = norm
+            .split(" ")
+            .map((w) => (w.length >= 4 ? `${w}~` : w))
+            .join(" ");
+          if (fuzzy !== norm) hits = mergeHits(hits, await searchWikipedia(fuzzy, lang));
+        }
+        const ranked = rankHits(hits, norm);
+        const items = await fetchByQids(
+          ranked.map((h) => h.qid),
+          this.classCache,
+        );
         upsertWikidataItems(this.db, items);
         const known = new Set(items.map((i) => i.qid));
-        const qids = hits.filter((h) => known.has(h));
+        const qids = ranked.map((h) => h.qid).filter((q) => known.has(q));
         setSearchCache(this.db, key, qids);
         return qids;
       })().finally(() => this.searches.delete(key));
@@ -225,4 +239,61 @@ export class Discovery {
       return { qids: cached?.qids ?? [], remote: "failed" };
     }
   }
+}
+
+// ---------- Search ranking helpers ----------
+
+/** Titles at least this similar to the query count as "what the user meant". */
+const CLOSE_MATCH = 0.8;
+
+function normalize(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // strip accents
+    .replace(/\s*\(.*?\)\s*/g, " ") // drop qualifiers like "(zangeres)"
+    .replace(/[^\p{L}\p{N} ]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function levenshtein(a: string, b: string): number {
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let diag = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const above = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1));
+      diag = above;
+    }
+  }
+  return row[b.length];
+}
+
+/** 0..1: how close a page title is to the query, spelling-wise. */
+function similarity(title: string, query: string): number {
+  const a = normalize(title);
+  const b = normalize(query);
+  if (!a || !b) return 0;
+  return 1 - levenshtein(a, b) / Math.max(a.length, b.length);
+}
+
+function mergeHits(first: SearchHit[], second: SearchHit[]): SearchHit[] {
+  const seen = new Set(first.map((h) => h.qid));
+  return [...first, ...second.filter((h) => !seen.has(h.qid))];
+}
+
+/** Near-exact title matches first (closest first); otherwise keep Wikipedia's order. */
+function rankHits(hits: SearchHit[], query: string): SearchHit[] {
+  return hits
+    .map((h, i) => ({ h, i, s: similarity(h.title, query) }))
+    .sort((x, y) => {
+      const xClose = x.s >= CLOSE_MATCH;
+      const yClose = y.s >= CLOSE_MATCH;
+      if (xClose !== yClose) return xClose ? -1 : 1;
+      if (xClose && x.s !== y.s) return y.s - x.s;
+      return x.i - y.i;
+    })
+    .map((x) => x.h);
 }

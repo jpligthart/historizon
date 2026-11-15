@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import {
   CATEGORIES,
   DEFAULT_ZOOM_YEARS,
@@ -14,6 +14,7 @@ import { CC_BY_SA_URL, DetailPanel } from "./DetailPanel";
 /** AGPL §13: users interacting over a network must be offered the source. */
 const SOURCE_URL = import.meta.env.VITE_SOURCE_URL || "https://github.com/jpligthart/historizon";
 import { CATEGORY_COLORS, t, type Locale } from "./i18n";
+import { formatYearsCompact } from "./timelineLayout";
 
 /** Current moment as a fractional year, e.g. 2026.87. */
 function currentFractionalYear(): number {
@@ -31,6 +32,8 @@ const RIGHT_PAD = 0.03;
 /** Most notable items per category in view (level of detail). */
 const PER_CATEGORY = 25;
 const POLL_MS = 1500;
+/** Search results shown in the dropdown. */
+const MAX_RESULTS = 8;
 const MAX_POLLS = 40;
 const CATEGORY_ORDER = Object.fromEntries(CATEGORIES.map((c, i) => [c, i])) as Record<Category, number>;
 
@@ -51,6 +54,8 @@ export function App() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [searchState, setSearchState] = useState<"idle" | "searching" | "done" | "failed">("idle");
   const [refreshTick, setRefreshTick] = useState(0);
+  const [listOpen, setListOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
   /** Items per category actually drawn on the timeline (after level-of-detail trimming). */
   const [drawnCounts, setDrawnCounts] = useState<Partial<Record<Category, number>>>({});
 
@@ -228,15 +233,42 @@ export function App() {
 
   const goNow = () => setView((v) => ({ ...v, end: clampEnd(v.span, NOW + v.span * RIGHT_PAD) }));
 
-  const jumpToFirst = () => {
-    const m = visibleMatches[0];
-    if (!m) return;
+  /** Center the timeline on an item and select it. */
+  const jumpTo = (m: TimelineItem) => {
     const mid = (m.startYear + (m.endYear ?? NOW)) / 2;
     setView((v) => ({ ...v, end: clampEnd(v.span, mid + v.span / 2) }));
     setSelected(m);
   };
 
   const showSearchStatus = deferredQuery.length >= 2 && searchState !== "idle";
+  const resultList = visibleMatches.slice(0, MAX_RESULTS);
+  const listVisible = listOpen && resultList.length > 0;
+
+  const pickResult = (m: TimelineItem) => {
+    jumpTo(m);
+    setListOpen(false);
+  };
+
+  // Reset the highlighted option whenever the results change.
+  useEffect(() => setActiveIndex(0), [matches]);
+
+  const onSearchKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (resultList.length === 0) return;
+      e.preventDefault();
+      if (!listOpen) {
+        setListOpen(true);
+        return;
+      }
+      const delta = e.key === "ArrowDown" ? 1 : -1;
+      setActiveIndex((i) => (i + delta + resultList.length) % resultList.length);
+    } else if (e.key === "Enter") {
+      const m = resultList[listOpen ? activeIndex : 0];
+      if (m) pickResult(m);
+    } else if (e.key === "Escape") {
+      setListOpen(false);
+    }
+  };
 
   const toggleCategory = (cat: Category) =>
     setHidden((prev) => {
@@ -286,11 +318,19 @@ export function App() {
           </svg>
           <input
             type="text"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={listVisible}
+            aria-controls="search-results"
+            aria-activedescendant={listVisible ? `search-opt-${activeIndex}` : undefined}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") jumpToFirst();
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setListOpen(true);
             }}
+            onFocus={() => setListOpen(true)}
+            onBlur={() => setListOpen(false)}
+            onKeyDown={onSearchKeyDown}
             placeholder={t(locale, "searchPlaceholder")}
             aria-label={t(locale, "search")}
           />
@@ -298,32 +338,59 @@ export function App() {
           {showSearchStatus && (
             <div className="search-status" aria-live="polite">
               {searchState === "searching" && <span className="spinner" aria-hidden="true" />}
-              <span className="search-count">
-                {visibleMatches.length > 0
-                  ? `${visibleMatches.length} ${t(locale, "matches")}`
-                  : searchState === "searching"
-                    ? t(locale, "searchingShort")
-                    : t(locale, "noMatches")}
-              </span>
+              {visibleMatches.length > 0 ? (
+                <button
+                  type="button"
+                  className="count-btn"
+                  aria-expanded={listVisible}
+                  aria-controls="search-results"
+                  // Keep focus in the input so the list doesn't close on blur first.
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setListOpen((o) => !o)}
+                >
+                  {visibleMatches.length} {t(locale, "matches")}
+                  <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d={listVisible ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"} />
+                  </svg>
+                </button>
+              ) : (
+                <span className="search-count">
+                  {searchState === "searching" ? t(locale, "searchingShort") : t(locale, "noMatches")}
+                </span>
+              )}
               {searchState === "failed" && (
                 <span className="search-warn" role="img" title={t(locale, "searchOffline")} aria-label={t(locale, "searchOffline")}>
                   !
                 </span>
               )}
-              {visibleMatches.length > 0 && (
-                <button
-                  type="button"
-                  className="jump-btn"
-                  onClick={jumpToFirst}
-                  title={t(locale, "jump")}
-                  aria-label={t(locale, "jump")}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M5 12h14M13 6l6 6-6 6" />
-                  </svg>
-                </button>
-              )}
             </div>
+          )}
+          {listVisible && (
+            <ul id="search-results" role="listbox" className="search-results" aria-label={t(locale, "search")}>
+              {resultList.map((m, i) => (
+                <li
+                  key={m.id}
+                  id={`search-opt-${i}`}
+                  role="option"
+                  aria-selected={i === activeIndex}
+                  className={`result${i === activeIndex ? " active" : ""}`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseEnter={() => setActiveIndex(i)}
+                  onClick={() => pickResult(m)}
+                >
+                  <span className="dot" style={{ background: CATEGORY_COLORS[m.category] }} />
+                  <span className="result-name">{labelOf(m)}</span>
+                  <span className="result-meta">
+                    {t(locale, m.category)} · {formatYearsCompact(m, t(locale, "bce"))}
+                  </span>
+                </li>
+              ))}
+              {visibleMatches.length > resultList.length && (
+                <li className="result-more" aria-hidden="true">
+                  + {visibleMatches.length - resultList.length} {t(locale, "more")}
+                </li>
+              )}
+            </ul>
           )}
         </div>
 

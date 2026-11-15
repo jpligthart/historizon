@@ -18,6 +18,11 @@ export type Bar = {
   inside: boolean;
   /** Position of the outside label, or null when the label fits inside the bar. */
   outside: CSSProperties | null;
+  /** The item starts before / ends after the visible range (bar is cut off at the edge). */
+  clipStart: boolean;
+  clipEnd: boolean;
+  /** No end date: still going on today. */
+  ongoing: boolean;
 };
 
 export type Lane = {
@@ -89,7 +94,11 @@ export function layoutTimeline(opts: {
       const lw = measure(label) + 4;
       const barStart = point ? x0 - 6 : x0;
       const barEnd = point ? x0 + 6 : x0 + bw;
-      const inside = !point && bw >= lw + 20;
+      const clipStart = !point && s < start;
+      const clipEnd = !point && e > end;
+      // Clipped edges fade out, so keep the label clear of them.
+      const padX = (clipStart ? 20 : 10) + (clipEnd ? 20 : 10);
+      const inside = !point && bw >= lw + padX;
 
       let side: "r" | "l" = "r";
       let occS = barStart;
@@ -127,7 +136,10 @@ export function layoutTimeline(opts: {
         }
       }
 
-      bars.push({ item, category, label, top, f0, f1, point, inside, outside });
+      bars.push({
+        item, category, label, top, f0, f1, point, inside, outside,
+        clipStart, clipEnd, ongoing: isOngoing(item),
+      });
     }
 
     const height = rows.length === 0 ? EMPTY_LANE_H : 24 + (rows.length - 1) * PITCH + BAR_H;

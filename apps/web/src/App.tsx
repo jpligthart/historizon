@@ -10,10 +10,11 @@ import {
 } from "@historizon/shared";
 import { fetchItem, fetchItems, fetchMeta, searchItems } from "./api";
 import { Timeline } from "./Timeline";
-import { CC_BY_SA_URL, DetailPanel } from "./DetailPanel";
+import { DetailPanel } from "./DetailPanel";
 
 /** AGPL §13: users interacting over a network must be offered the source. */
 const SOURCE_URL = import.meta.env.VITE_SOURCE_URL || "https://github.com/jpligthart/historizon";
+const JELPH_ME_URL = "https://ko-fi.com/jelphme";
 import { CATEGORY_COLORS, t, type Locale } from "./i18n";
 import { formatYearsCompact } from "./timelineLayout";
 
@@ -86,19 +87,24 @@ export function App() {
   const [refreshTick, setRefreshTick] = useState(0);
   const [listOpen, setListOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  // Esc closes the detail panel (the search field handles its own Esc).
+  // Esc closes about, then the detail panel (the search field handles its own Esc).
   useEffect(() => {
-    if (!selected) return;
+    if (!selected && !aboutOpen) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (e.key !== "Escape" || el?.closest("input, textarea, select")) return;
+      if (aboutOpen) {
+        setAboutOpen(false);
+        return;
+      }
       setSelected(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected]);
+  }, [selected, aboutOpen]);
 
   const clearSearch = () => {
     setQuery("");
@@ -460,8 +466,109 @@ export function App() {
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            className="about-btn"
+            aria-expanded={aboutOpen}
+            aria-controls="about-panel"
+            onClick={() => setAboutOpen(true)}
+          >
+            {t(locale, "about")}
+          </button>
         </div>
       </header>
+
+      {aboutOpen && (
+        <div className="about-backdrop" onPointerDown={() => setAboutOpen(false)}>
+          <div
+            id="about-panel"
+            className="about-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="about-title"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <div className="about-head">
+              <div className="about-brand">
+                <svg width="36" height="36" viewBox="0 0 28 28" aria-hidden="true">
+                  <rect x="2" y="5" width="16" height="5" rx="2.5" fill="#0F766E" />
+                  <rect x="8" y="12" width="18" height="5" rx="2.5" fill="#1D4ED8" />
+                  <rect x="5" y="19" width="12" height="5" rx="2.5" fill="#B91C1C" />
+                </svg>
+                <div className="about-brand-text">
+                  <h2 id="about-title">{t(locale, "aboutTitle")}</h2>
+                  <p className="about-tagline">{t(locale, "tagline")}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="about-close"
+                aria-label={t(locale, "closeDetail")}
+                onClick={() => setAboutOpen(false)}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </div>
+
+            <p className="about-blurb">{t(locale, "aboutBlurb")}</p>
+
+            <section className="about-section" aria-labelledby="about-sources-heading">
+              <h3 id="about-sources-heading" className="about-section-label">
+                {t(locale, "aboutSources")}
+              </h3>
+              <ul className="about-links">
+                <li>
+                  <a href="https://www.wikidata.org/" target="_blank" rel="noreferrer" className="about-link">
+                    <span>
+                      <span className="about-link-title">{t(locale, "aboutWikidata")}</span>
+                      <span className="about-link-desc">{t(locale, "aboutWikidataDesc")}</span>
+                    </span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M7 17L17 7M10 7h7v7" />
+                    </svg>
+                  </a>
+                </li>
+                <li>
+                  <a href="https://www.wikipedia.org/" target="_blank" rel="noreferrer" className="about-link">
+                    <span>
+                      <span className="about-link-title">{t(locale, "aboutWikipedia")}</span>
+                      <span className="about-link-desc">{t(locale, "aboutWikipediaDesc")}</span>
+                    </span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M7 17L17 7M10 7h7v7" />
+                    </svg>
+                  </a>
+                </li>
+                <li>
+                  <a href={SOURCE_URL} target="_blank" rel="noreferrer" className="about-link">
+                    <span>
+                      <span className="about-link-title">{t(locale, "aboutSource")}</span>
+                      <span className="about-link-desc">{t(locale, "aboutSourceDesc")}</span>
+                    </span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M7 17L17 7M10 7h7v7" />
+                    </svg>
+                  </a>
+                </li>
+              </ul>
+            </section>
+
+            <section className="about-section" aria-labelledby="about-support-heading">
+              <h3 id="about-support-heading" className="about-section-label">
+                {t(locale, "aboutSupport")}
+              </h3>
+              <a href={JELPH_ME_URL} target="_blank" rel="noreferrer" className="about-tip">
+                <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 21s-6.5-4.3-9-8.2C1.2 9.8 2.6 6.5 6 6c1.8-.3 3.5.6 4.5 2 1-1.4 2.7-2.3 4.5-2 3.4.5 4.8 3.8 3 6.8C18.5 16.7 12 21 12 21z" />
+                </svg>
+                {t(locale, "aboutTip")}
+              </a>
+            </section>
+          </div>
+        </div>
+      )}
 
       <div className="toolbar">
         <div className="chips-scroll">
@@ -538,25 +645,6 @@ export function App() {
           />
         )}
       </main>
-
-      <footer className="footer">
-        <span>
-          {t(locale, "freeSoftware")}{" "}
-          <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer">
-            AGPL-3.0
-          </a>
-          {" · "}
-          <a href={SOURCE_URL} target="_blank" rel="noreferrer">
-            {t(locale, "sourceCode")}
-          </a>
-        </span>
-        <span>
-          {t(locale, "footerWiki")}{" "}
-          <a href={CC_BY_SA_URL} target="_blank" rel="noreferrer">
-            CC BY-SA 4.0
-          </a>
-        </span>
-      </footer>
     </div>
   );
 }

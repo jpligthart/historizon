@@ -1,6 +1,5 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import { cors } from "hono/cors";
 import {
   CATEGORIES,
   DEFAULT_ZOOM_YEARS,
@@ -19,6 +18,7 @@ import {
   upsertItem,
 } from "./db.js";
 import { Discovery } from "./discovery.js";
+import { rateLimit } from "./rateLimit.js";
 import { SEED_ITEMS } from "./seed-data.js";
 import { throttles } from "./throttle.js";
 import { fetchWikipediaExtract } from "./wikipedia.js";
@@ -26,6 +26,9 @@ import { fetchWikipediaExtract } from "./wikipedia.js";
 const app = new Hono();
 const database = openDb();
 const discovery = new Discovery(database);
+
+/** Max characters for Wikipedia search queries. */
+const MAX_SEARCH_Q = 100;
 
 function parseCategories(param: string | undefined): Category[] | undefined {
   if (!param) return undefined;
@@ -72,19 +75,14 @@ void discovery
   .then(() => discovery.scheduleNlCheck())
   .catch((err) => console.warn("[startup] data migration failed:", (err as Error).message));
 
-app.use(
-  "*",
-  cors({
-    origin: "*",
-  }),
-);
+// Same-origin only (Vite proxy / nginx). No open CORS — third-party sites cannot drive the API.
 
 app.get("/health", (c) => {
   const body: HealthResponse = { status: "ok", service: "historizon-api" };
   return c.json(body);
 });
 
-app.get("/api/meta", (c) => {
+app.get("/api/meta", rateLimit("read", 180), (c) => {
   const meta = getMeta(database);
   return c.json({
     ...meta,
@@ -94,7 +92,12 @@ app.get("/api/meta", (c) => {
   });
 });
 
-app.get("/api/items", (c) => {
+app.get("/api/items", async (c, next) => {
+  // Discovery (fetch=1) is more expensive; plain reads share the lighter bucket.
+  const group = c.req.query("fetch") === "1" ? "discover" : "read";
+  const limit = group === "discover" ? 90 : 180;
+  return rateLimit(group, limit)(c, next);
+}, (c) => {
   const from = Number(c.req.query("from"));
   const to = Number(c.req.query("to"));
   if (!Number.isFinite(from) || !Number.isFinite(to) || from > to) {
@@ -116,8 +119,8 @@ app.get("/api/items", (c) => {
   return c.json({ items, from, to, count: items.length, pending, pausedMs });
 });
 
-app.get("/api/search", async (c) => {
-  const q = (c.req.query("q") ?? "").trim();
+app.get("/api/search", rateLimit("search", 30), async (c) => {
+  const q = (c.req.query("q") ?? "").trim().slice(0, MAX_SEARCH_Q);
   const lang = c.req.query("lang") === "nl" ? "nl" : "en";
   if (q.length < 2) return c.json({ items: [], remote: "skipped" });
 
@@ -129,7 +132,7 @@ app.get("/api/search", async (c) => {
   return c.json({ items: [...fromWiki, ...local], remote });
 });
 
-app.get("/api/items/:id", async (c) => {
+app.get("/api/items/:id", rateLimit("enrich", 60), async (c) => {
   const id = c.req.param("id");
   const row = getItem(database, id);
   if (!row) return c.json({ error: "Not found" }, 404);

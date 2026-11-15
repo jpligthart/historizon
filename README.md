@@ -85,6 +85,15 @@ A toggle that gives items with a Dutch connection priority (×2.5 in the ranking
 
 All requests honour `Retry-After` and pause the whole service on 429/503. **Set `WIKI_USER_AGENT`** with real contact info before running this publicly; Wikimedia throttles anonymous-looking clients hard.
 
+The API also applies **inbound** per-IP rate limits (search, discovery, enrich, reads). Clients that exceed them get `429` with `Retry-After`. `/health` is not limited.
+
+### Public hosting checklist
+
+- Set `WIKI_USER_AGENT` to something with your repo URL and a contact address (see `.env.example`).
+- Do **not** publish API port 3000 on the internet. Keep the API on the Docker network only; expose the web container (or put TLS in front of it). Compose already binds web to `127.0.0.1` by default.
+- Confirm `.env` and `*.sqlite` are not committed (`git status` / `.gitignore`).
+- If you host a modified build, set `VITE_SOURCE_URL` at image build time to the matching source repo (AGPL).
+
 ## Zoom
 
 Default viewport: last **50 years**. Presets: 10 / 25 / 50 / 100 / 250 / 500. Drag or Shift+wheel (or horizontal trackpad scroll) to pan; Ctrl+wheel to zoom. Click an item to see what happened at the same time.

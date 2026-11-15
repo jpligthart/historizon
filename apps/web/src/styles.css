@@ -178,7 +178,36 @@ input:focus-visible {
 }
 
 .search.has-status input {
-  padding-right: 148px;
+  padding-right: 184px;
+}
+
+.search.has-clear input {
+  padding-right: 48px;
+}
+
+.clear-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.clear-btn:hover {
+  background: var(--surface-soft);
+  color: var(--ink);
+}
+
+.clear-btn svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
 }
 
 .search-status {
@@ -341,18 +370,23 @@ input:focus-visible {
 
 /* ---------- Main layout ---------- */
 
+/* The detail panel only exists while something is selected; the timeline gets the full
+   width otherwise. */
 .main {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
   gap: 20px;
   padding: 0 28px 28px;
+}
+
+.main.with-detail {
+  grid-template-columns: minmax(0, 1fr) 440px;
 }
 
 /* ---------- Timeline card ---------- */
 
 .tl-card {
-  flex: 999 1 600px;
   min-width: 0;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -602,9 +636,11 @@ input:focus-visible {
 /* ---------- Detail panel ---------- */
 
 .detail {
-  flex: 1 1 320px;
-  max-width: 400px;
-  min-width: 280px;
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -612,11 +648,93 @@ input:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  animation: detail-in 180ms ease-out;
 }
 
-.detail-empty {
-  font-size: 14px;
+/* The panel scrolls; its parts must keep their size instead of shrinking to fit. */
+.detail > * {
+  flex-shrink: 0;
+}
+
+@keyframes detail-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+.detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -8px -8px -6px 0;
+}
+
+.close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
   color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.close-btn:hover {
+  background: var(--surface-soft);
+  color: var(--ink);
+}
+
+.close-btn svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.tl-hint {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+/* Narrow screens: no room for two columns, so the panel becomes a bottom sheet. */
+@media (max-width: 1100px) {
+  .main.with-detail {
+    grid-template-columns: minmax(0, 1fr);
+    padding-bottom: 62vh;
+  }
+
+  .detail {
+    position: fixed;
+    z-index: 30;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    max-height: 60vh;
+    border-radius: 16px 16px 0 0;
+    border-bottom: 0;
+    box-shadow: 0 -12px 32px rgba(11, 18, 32, 0.16);
+    animation-name: sheet-in;
+  }
+
+  @keyframes sheet-in {
+    from {
+      transform: translateY(24px);
+      opacity: 0;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .detail {
+    animation: none;
+  }
 }
 
 .detail-cat {
@@ -815,10 +933,6 @@ input:focus-visible {
 
   .tl-lane-label {
     padding-left: 12px;
-  }
-
-  .detail {
-    max-width: none;
   }
 }
 

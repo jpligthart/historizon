@@ -45,16 +45,16 @@ const FADE = "20px";
  * - continues beyond the visible range: square edge that fades out
  * - ongoing (no end date) and reaching "now": square edge, no fade
  */
-function edgeStyle(b: Bar): CSSProperties {
+function edgeStyle(b: Bar, color: string): CSSProperties {
   const r = "7px";
   const squareRight = b.clipEnd || b.ongoing;
   const style: CSSProperties = {
     borderRadius: `${b.clipStart ? 0 : r} ${squareRight ? 0 : r} ${squareRight ? 0 : r} ${b.clipStart ? 0 : r}`,
   };
   if (b.clipStart || b.clipEnd) {
-    const mask = `linear-gradient(to right, ${b.clipStart ? "transparent" : "#000"} 0, #000 ${b.clipStart ? FADE : "0px"}, #000 calc(100% - ${b.clipEnd ? FADE : "0px"}), ${b.clipEnd ? "transparent" : "#000"} 100%)`;
-    style.maskImage = mask;
-    style.WebkitMaskImage = mask;
+    // Fade via the background (not a CSS mask), so the selection ring and label stay intact.
+    const clear = `${color}00`;
+    style.background = `linear-gradient(to right, ${b.clipStart ? clear : color} 0, ${color} ${b.clipStart ? FADE : "0px"}, ${color} calc(100% - ${b.clipEnd ? FADE : "0px"}), ${b.clipEnd ? clear : color} 100%)`;
   }
   return style;
 }
@@ -182,6 +182,7 @@ export function Timeline({
         <div className="tl-range">
           <span className="tl-range-text">{rangeText}</span>
           <span className="tl-span-text">{spanText}</span>
+          {!selectedId && !loadingMore && <span className="tl-hint">· {t(locale, "emptyHint")}</span>}
           {loadingMore && (
             <span className="tl-loading" role="status">
               <span className="spinner" aria-hidden="true" />
@@ -326,7 +327,7 @@ export function Timeline({
                       padding: b.inside ? `0 ${b.clipEnd ? 20 : 10}px 0 ${b.clipStart ? 20 : 10}px` : 0,
                       opacity,
                       boxShadow: selected ? SELECTED_RING : "none",
-                      ...edgeStyle(b),
+                      ...edgeStyle(b, color),
                     }}
                   >
                     {b.inside && <span className="bar-label">{b.label}</span>}

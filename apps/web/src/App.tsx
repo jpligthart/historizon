@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
   CATEGORIES,
   DEFAULT_ZOOM_YEARS,
@@ -56,6 +56,27 @@ export function App() {
   const [refreshTick, setRefreshTick] = useState(0);
   const [listOpen, setListOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // Esc closes the detail panel (the search field handles its own Esc).
+  useEffect(() => {
+    if (!selected) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (e.key !== "Escape" || el?.closest("input, textarea, select")) return;
+      setSelected(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selected]);
+
+  const clearSearch = () => {
+    setQuery("");
+    setMatches([]);
+    setSearchState("idle");
+    setListOpen(false);
+    searchRef.current?.focus();
+  };
   /** Items per category actually drawn on the timeline (after level-of-detail trimming). */
   const [drawnCounts, setDrawnCounts] = useState<Partial<Record<Category, number>>>({});
 
@@ -266,7 +287,9 @@ export function App() {
       const m = resultList[listOpen ? activeIndex : 0];
       if (m) pickResult(m);
     } else if (e.key === "Escape") {
-      setListOpen(false);
+      // First Esc closes the list, a second one clears the field.
+      if (listVisible) setListOpen(false);
+      else if (query) clearSearch();
     }
   };
 
@@ -311,12 +334,13 @@ export function App() {
       </header>
 
       <div className="toolbar">
-        <div className={`search${showSearchStatus ? " has-status" : ""}`}>
+        <div className={`search${showSearchStatus ? " has-status" : query ? " has-clear" : ""}`}>
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="11" cy="11" r="7" />
             <path d="M20 20l-4-4" />
           </svg>
           <input
+            ref={searchRef}
             type="text"
             role="combobox"
             aria-autocomplete="list"
@@ -335,10 +359,10 @@ export function App() {
             aria-label={t(locale, "search")}
           />
           {/* Status lives inside the field so the toolbar never reflows while searching. */}
-          {showSearchStatus && (
+          {(showSearchStatus || query) && (
             <div className="search-status" aria-live="polite">
-              {searchState === "searching" && <span className="spinner" aria-hidden="true" />}
-              {visibleMatches.length > 0 ? (
+              {showSearchStatus && searchState === "searching" && <span className="spinner" aria-hidden="true" />}
+              {!showSearchStatus ? null : visibleMatches.length > 0 ? (
                 <button
                   type="button"
                   className="count-btn"
@@ -358,10 +382,24 @@ export function App() {
                   {searchState === "searching" ? t(locale, "searchingShort") : t(locale, "noMatches")}
                 </span>
               )}
-              {searchState === "failed" && (
+              {showSearchStatus && searchState === "failed" && (
                 <span className="search-warn" role="img" title={t(locale, "searchOffline")} aria-label={t(locale, "searchOffline")}>
                   !
                 </span>
+              )}
+              {query && (
+                <button
+                  type="button"
+                  className="clear-btn"
+                  aria-label={t(locale, "clearSearch")}
+                  title={t(locale, "clearSearch")}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={clearSearch}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6L6 18" />
+                  </svg>
+                </button>
               )}
             </div>
           )}
@@ -440,7 +478,7 @@ export function App() {
         </div>
       </div>
 
-      <main className="main">
+      <main className={`main${selected ? " with-detail" : ""}`}>
         <Timeline
           items={visibleItems}
           categories={visibleCategories}
@@ -460,15 +498,18 @@ export function App() {
           loadingMore={loadingMore}
           onVisibleCounts={setDrawnCounts}
         />
-        <DetailPanel
-          locale={locale}
-          item={selected}
-          detail={detail}
-          concurrent={concurrent}
-          nowYear={NOW_YEAR}
-          labelOf={labelOf}
-          onSelect={select}
-        />
+        {selected && (
+          <DetailPanel
+            locale={locale}
+            item={selected}
+            detail={detail}
+            concurrent={concurrent}
+            nowYear={NOW_YEAR}
+            labelOf={labelOf}
+            onSelect={select}
+            onClose={() => setSelected(null)}
+          />
+        )}
       </main>
 
       <footer className="footer">

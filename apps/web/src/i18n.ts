@@ -5,7 +5,7 @@ export type Locale = "en" | "nl";
 const messages = {
   en: {
     brand: "Historizon",
-    tagline: "See what happened at the same time.",
+    tagline: "History, side by side.",
     language: "Language",
     search: "Search history",
     searchPlaceholder: "Search history…",
@@ -56,7 +56,7 @@ const messages = {
   },
   nl: {
     brand: "Historizon",
-    tagline: "Zie wat er tegelijk gebeurde.",
+    tagline: "Geschiedenis, naast elkaar.",
     language: "Taal",
     search: "Zoek in de geschiedenis",
     searchPlaceholder: "Zoek in de geschiedenis…",

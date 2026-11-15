@@ -342,9 +342,11 @@ export function App() {
               <rect x="8" y="12" width="18" height="5" rx="2.5" fill="#1D4ED8" />
               <rect x="5" y="19" width="12" height="5" rx="2.5" fill="#B91C1C" />
             </svg>
-            <h1>{t(locale, "brand")}</h1>
+            <div className="brand-text">
+              <h1>{t(locale, "brand")}</h1>
+              <span className="tagline">{t(locale, "tagline")}</span>
+            </div>
           </div>
-          <span className="tagline">{t(locale, "tagline")}</span>
         </div>
         <div className={`search${showSearchStatus ? " has-status" : query ? " has-clear" : ""}`}>
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">

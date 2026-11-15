@@ -198,7 +198,6 @@ export function Timeline({
         <div className="tl-range">
           <span className="tl-range-text">{rangeText}</span>
           <span className="tl-span-text">{spanText}</span>
-          {!selectedId && !loadingMore && <span className="tl-hint">· {t(locale, "emptyHint")}</span>}
           {loadingMore && (
             <span className={`tl-loading${wikiPaused ? " paused" : ""}`} role="status">
               {!wikiPaused && <span className="spinner" aria-hidden="true" />}

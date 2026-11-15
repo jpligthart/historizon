@@ -786,11 +786,6 @@ input:focus-visible {
   stroke-linecap: round;
 }
 
-.tl-hint {
-  font-size: 13px;
-  color: var(--ink-soft);
-}
-
 /* Narrow screens: no room for two columns, so the panel becomes a bottom sheet. */
 @media (max-width: 1100px) {
   .main.with-detail {

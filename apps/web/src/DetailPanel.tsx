@@ -39,9 +39,11 @@ export function DetailPanel({ locale, item, detail, concurrent, nowYear, labelOf
     ? nowYear - item.startYear
     : (item.endYear as number) - item.startYear;
   const loaded = detail !== null && detail.id === item.id;
-  const description = loaded
-    ? (locale === "nl" ? detail.descriptionNl : null) || detail.description || ""
-    : "";
+  const nlDescription = loaded ? detail.descriptionNl : null;
+  const enDescription = loaded ? detail.description : null;
+  const description =
+    locale === "nl" ? nlDescription || enDescription || "" : enDescription || nlDescription || "";
+  const englishOnly = locale === "nl" && !nlDescription && !!enDescription;
 
   return (
     <aside ref={ref} className="detail" aria-label={t(locale, "detail")}>
@@ -74,11 +76,20 @@ export function DetailPanel({ locale, item, detail, concurrent, nowYear, labelOf
 
       {loaded ? (
         <div className="detail-body">
+          {englishOnly && <p className="extract-lang-note">{t(locale, "extractEnglishOnly")}</p>}
           <p className="detail-text">{description || t(locale, "noExtract")}</p>
           {description && detail.descriptionFromWikipedia && (
             <p className="attribution">
               {t(locale, "sourcePrefix")}{" "}
-              <a href={detail.wikipediaUrl ?? wikipediaHref(item, "en", item.title)} target="_blank" rel="noreferrer">
+              <a
+                href={
+                  englishOnly
+                    ? detail.wikipediaUrl ?? wikipediaHref(item, "en", item.title)
+                    : wikipediaHref(item, locale, name)
+                }
+                target="_blank"
+                rel="noreferrer"
+              >
                 Wikipedia
               </a>
               {", "}

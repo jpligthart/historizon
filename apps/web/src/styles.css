@@ -943,6 +943,13 @@ input:focus-visible {
   color: var(--ink-soft);
 }
 
+.extract-lang-note {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
 .detail-text {
   margin: 0;
   font-size: 14px;

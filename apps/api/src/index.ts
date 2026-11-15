@@ -20,6 +20,7 @@ import {
 } from "./db.js";
 import { Discovery } from "./discovery.js";
 import { SEED_ITEMS } from "./seed-data.js";
+import { throttles } from "./throttle.js";
 import { fetchWikipediaExtract } from "./wikipedia.js";
 
 const app = new Hono();
@@ -110,7 +111,9 @@ app.get("/api/items", (c) => {
   const lens = c.req.query("lens") === "nl" ? "nl" : null;
   const pending = c.req.query("fetch") === "1" ? discovery.ensure(from, to, categories, lens) : 0;
   const items = queryItems(database, { from, to, categories, q, limit, perCategory, lens });
-  return c.json({ items, from, to, count: items.length, pending });
+  // How long SPARQL is still paused after a 429/5xx (0 = free to fetch).
+  const pausedMs = Math.round(throttles.sparql.pausedFor());
+  return c.json({ items, from, to, count: items.length, pending, pausedMs });
 });
 
 app.get("/api/search", async (c) => {

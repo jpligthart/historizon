@@ -20,7 +20,7 @@ export async function fetchItems(opts: {
   /** "nl": Nederland-bril (Dutch items rank higher; Dutch tiles are fetched too). */
   lens?: "nl" | null;
   signal?: AbortSignal;
-}): Promise<{ items: TimelineItem[]; pending: number }> {
+}): Promise<{ items: TimelineItem[]; pending: number; pausedMs: number }> {
   const params = new URLSearchParams({
     from: String(Math.floor(opts.from)),
     to: String(Math.ceil(opts.to)),
@@ -34,8 +34,8 @@ export async function fetchItems(opts: {
 
   const res = await fetch(`/api/items?${params}`, { signal: opts.signal });
   if (!res.ok) throw new Error("Failed to load items");
-  const data = (await res.json()) as { items: TimelineItem[]; pending?: number };
-  return { items: data.items, pending: data.pending ?? 0 };
+  const data = (await res.json()) as { items: TimelineItem[]; pending?: number; pausedMs?: number };
+  return { items: data.items, pending: data.pending ?? 0, pausedMs: data.pausedMs ?? 0 };
 }
 
 export type SearchResult = {

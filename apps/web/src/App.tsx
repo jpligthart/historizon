@@ -81,6 +81,7 @@ export function App() {
   const [detail, setDetail] = useState<TimelineItem | null>(null);
   const [concurrentAll, setConcurrentAll] = useState<TimelineItem[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [wikiPaused, setWikiPaused] = useState(false);
   const [searchState, setSearchState] = useState<"idle" | "searching" | "done" | "failed">("idle");
   const [refreshTick, setRefreshTick] = useState(0);
   const [listOpen, setListOpen] = useState(false);
@@ -133,12 +134,15 @@ export function App() {
     let polls = 0;
     const load = () => {
       fetchItems({ from: start, to: end, limit: 2000, perCategory: PER_CATEGORY, discover: true, lens: lensOn ? "nl" : null, signal: ctrl.signal })
-        .then(({ items: next, pending }) => {
+        .then(({ items: next, pending, pausedMs }) => {
           setItems(next);
-          const more = pending > 0 && polls < MAX_POLLS;
+          const paused = pausedMs > 0;
+          // While SPARQL is paused, keep polling without burning the poll budget.
+          const more = pending > 0 && (paused || polls < MAX_POLLS);
           setLoadingMore(more);
+          setWikiPaused(more && paused);
           if (more) {
-            polls++;
+            if (!paused) polls++;
             timer = window.setTimeout(load, POLL_MS);
           }
         })
@@ -515,6 +519,7 @@ export function App() {
           nlBoost={lensOn ? NL_BOOST : 1}
           onZoom={setZoom}
           loadingMore={loadingMore}
+          wikiPaused={wikiPaused}
         />
         {selected && (
           <DetailPanel

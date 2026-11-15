@@ -1023,6 +1023,59 @@ input:focus-visible {
     padding-bottom: 12px;
   }
 
+  /* Zoom + earlier/now/later on one compact row. */
+  .tl-head {
+    padding: 12px 14px;
+    gap: 8px;
+  }
+
+  .tl-nav {
+    flex-wrap: nowrap;
+    width: 100%;
+    gap: 4px;
+  }
+
+  .tl-nav .segmented.zoom {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .segmented.zoom .seg {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 30px;
+    padding: 0 2px;
+    font-size: 12px;
+  }
+
+  .tl-nav-sep {
+    height: 18px;
+    margin: 0 2px;
+  }
+
+  .tl-nav .icon-btn,
+  .tl-nav .now-btn {
+    height: 30px;
+    border-radius: 8px;
+  }
+
+  .tl-nav .icon-btn {
+    width: 30px;
+    flex: none;
+  }
+
+  .tl-nav .icon-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .tl-nav .now-btn {
+    flex: none;
+    min-width: 0;
+    padding: 0 8px;
+    font-size: 12px;
+  }
+
   /* Full-width chip row; lens sits on the next line so they don't fight. */
   .chips-scroll {
     position: relative;

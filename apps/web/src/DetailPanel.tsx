@@ -11,6 +11,8 @@ type Props = {
   item: TimelineItem;
   /** Enriched item (with Wikipedia extract) once loaded; null while loading. */
   detail: TimelineItem | null;
+  /** Enrich request failed; panel shows the list item without a fresh extract. */
+  detailFailed?: boolean;
   concurrent: TimelineItem[];
   nowYear: number;
   labelOf: (item: TimelineItem) => string;
@@ -25,7 +27,17 @@ function wikipediaHref(item: TimelineItem, locale: Locale, title: string): strin
 }
 
 /** Shown only while something is selected; slides in next to the timeline. */
-export function DetailPanel({ locale, item, detail, concurrent, nowYear, labelOf, onSelect, onClose }: Props) {
+export function DetailPanel({
+  locale,
+  item,
+  detail,
+  detailFailed = false,
+  concurrent,
+  nowYear,
+  labelOf,
+  onSelect,
+  onClose,
+}: Props) {
   const ref = useRef<HTMLElement>(null);
   // A new selection starts at the top of the panel (no re-mount, so no repeated slide-in).
   useEffect(() => {
@@ -76,7 +88,10 @@ export function DetailPanel({ locale, item, detail, concurrent, nowYear, labelOf
 
       {loaded ? (
         <div className="detail-body">
-          {englishOnly && <p className="extract-lang-note">{t(locale, "extractEnglishOnly")}</p>}
+          {detailFailed && <p className="extract-lang-note">{t(locale, "extractFailed")}</p>}
+          {!detailFailed && englishOnly && (
+            <p className="extract-lang-note">{t(locale, "extractEnglishOnly")}</p>
+          )}
           <p className="detail-text">{description || t(locale, "noExtract")}</p>
           {description && detail.descriptionFromWikipedia && (
             <p className="attribution">

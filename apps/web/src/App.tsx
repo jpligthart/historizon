@@ -80,6 +80,7 @@ export function App() {
   const [matches, setMatches] = useState<TimelineItem[]>([]);
   const [selected, setSelected] = useState<TimelineItem | null>(null);
   const [detail, setDetail] = useState<TimelineItem | null>(null);
+  const [detailFailed, setDetailFailed] = useState(false);
   const [concurrentAll, setConcurrentAll] = useState<TimelineItem[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [wikiPaused, setWikiPaused] = useState(false);
@@ -211,15 +212,31 @@ export function App() {
 
   // Enriched detail (Wikipedia extract, in the UI language when available).
   useEffect(() => {
-    if (!selected) return;
+    if (!selected) {
+      setDetail(null);
+      setDetailFailed(false);
+      return;
+    }
     let cancelled = false;
-    fetchItem(selected.id, locale)
+    const ctrl = new AbortController();
+    setDetailFailed(false);
+    fetchItem(selected.id, locale, ctrl.signal)
       .then((item) => {
-        if (!cancelled) setDetail(item);
+        if (!cancelled) {
+          setDetail(item);
+          setDetailFailed(false);
+        }
       })
-      .catch((err) => console.error(err));
+      .catch((err) => {
+        if (cancelled || ctrl.signal.aborted) return;
+        console.error(err);
+        // Show the list item so the panel does not stick on the skeleton.
+        setDetail(selected);
+        setDetailFailed(true);
+      });
     return () => {
       cancelled = true;
+      ctrl.abort();
     };
   }, [selected?.id, locale]);
 
@@ -276,7 +293,11 @@ export function App() {
     [concurrentAll, selected, hidden],
   );
 
-  const select = useCallback((item: TimelineItem) => setSelected(item), []);
+  const select = useCallback((item: TimelineItem) => {
+    setDetail(null);
+    setDetailFailed(false);
+    setSelected(item);
+  }, []);
 
   const setZoom = (z: number) =>
     setView((v) => {
@@ -311,6 +332,8 @@ export function App() {
   const jumpTo = (m: TimelineItem) => {
     const mid = (m.startYear + (m.endYear ?? NOW)) / 2;
     setView((v) => ({ ...v, end: clampEnd(v.span, mid + v.span / 2) }));
+    setDetail(null);
+    setDetailFailed(false);
     setSelected(m);
   };
 
@@ -674,6 +697,7 @@ export function App() {
             locale={locale}
             item={selected}
             detail={detail}
+            detailFailed={detailFailed}
             concurrent={concurrent}
             nowYear={NOW_YEAR}
             labelOf={labelOf}

@@ -51,8 +51,10 @@ export async function searchItems(q: string, lang: Locale, signal?: AbortSignal)
   return res.json();
 }
 
-export async function fetchItem(id: string, lang: Locale): Promise<TimelineItem> {
-  const res = await fetch(`/api/items/${encodeURIComponent(id)}?lang=${lang}`);
+export async function fetchItem(id: string, lang: Locale, signal?: AbortSignal): Promise<TimelineItem> {
+  const timeout = AbortSignal.timeout(20_000);
+  const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  const res = await fetch(`/api/items/${encodeURIComponent(id)}?lang=${lang}`, { signal: combined });
   if (!res.ok) throw new Error("Failed to load item");
   const data = (await res.json()) as { item: TimelineItem };
   return data.item;

@@ -107,6 +107,19 @@ export function Timeline({
       return next;
     });
   const lastX = useRef<number | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
+
+  // Capture phase, so Esc closes only the help and not the detail panel as well.
+  useEffect(() => {
+    if (!helpOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      setHelpOpen(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [helpOpen]);
 
   useEffect(() => {
     const el = trackRef.current;
@@ -240,8 +253,70 @@ export function Timeline({
               <path d="M9 6l6 6-6 6" />
             </svg>
           </button>
+          <button
+            type="button"
+            className="seg icon-btn help-btn"
+            aria-label={t(locale, "helpTitle")}
+            title={t(locale, "helpTitle")}
+            aria-haspopup="dialog"
+            onClick={() => setHelpOpen(true)}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6" />
+              <path d="M12 17h.01" />
+            </svg>
+          </button>
         </div>
       </div>
+
+      {helpOpen && (
+        <div className="about-backdrop" onPointerDown={() => setHelpOpen(false)}>
+          <div
+            className="about-modal help-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="help-title"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <div className="about-head">
+              <h2 id="help-title" className="help-title">
+                {t(locale, "helpTitle")}
+              </h2>
+              <button
+                type="button"
+                className="about-close"
+                aria-label={t(locale, "closeDetail")}
+                onClick={() => setHelpOpen(false)}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </div>
+            <dl className="help-list">
+              <dt>
+                <kbd>Ctrl</kbd> + {t(locale, "helpScroll")}
+              </dt>
+              <dd>{t(locale, "helpZoom")}</dd>
+              <dt>
+                <kbd>Shift</kbd> + {t(locale, "helpScroll")}
+              </dt>
+              <dd>{t(locale, "helpPan")}</dd>
+              <dt>{t(locale, "helpDrag")}</dt>
+              <dd>{t(locale, "helpPan")}</dd>
+              <dt>
+                <kbd>Ctrl</kbd> + {t(locale, "helpClickChip")}
+              </dt>
+              <dd>{t(locale, "helpSolo")}</dd>
+              <dt>
+                <kbd>Esc</kbd>
+              </dt>
+              <dd>{t(locale, "helpEsc")}</dd>
+            </dl>
+            <p className="help-note">{t(locale, "helpMac")}</p>
+          </div>
+        </div>
+      )}
 
       {loadingMore && (
         <div className={`tl-status${wikiPaused ? " paused" : ""}`} role="status">

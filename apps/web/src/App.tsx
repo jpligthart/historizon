@@ -454,6 +454,12 @@ export function App() {
       return next;
     });
 
+  const soloCategory = (cat: Category) =>
+    setHidden((prev) => {
+      const isSolo = !prev.has(cat) && prev.size === CATEGORIES.length - 1;
+      return isSolo ? new Set() : new Set(CATEGORIES.filter((c) => c !== cat));
+    });
+
   return (
     <div className="app">
       <header className="top">
@@ -737,7 +743,8 @@ export function App() {
                   type="button"
                   className={`chip${on ? " on" : ""}`}
                   aria-pressed={on}
-                  onClick={() => toggleCategory(cat)}
+                  title={t(locale, "soloHint")}
+                  onClick={(e) => (e.ctrlKey || e.metaKey ? soloCategory(cat) : toggleCategory(cat))}
                 >
                   <span
                     className="chip-dot"
@@ -747,6 +754,11 @@ export function App() {
                 </button>
               );
             })}
+            {hidden.size > 0 && (
+              <button type="button" className="chip chip-reset" onClick={() => setHidden(new Set())}>
+                {t(locale, "allCategories")}
+              </button>
+            )}
           </div>
         </div>
         <button

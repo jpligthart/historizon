@@ -136,6 +136,8 @@ export function App() {
   const [concurrentAll, setConcurrentAll] = useState<TimelineItem[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [wikiPaused, setWikiPaused] = useState(false);
+  /** Soft "delayed" hint only after pause lasts a bit — avoids alarming flicker. */
+  const [discoverDelayed, setDiscoverDelayed] = useState(false);
   const [searchState, setSearchState] = useState<"idle" | "searching" | "done" | "failed">("idle");
   const [refreshTick, setRefreshTick] = useState(0);
   const [listOpen, setListOpen] = useState(false);
@@ -231,6 +233,16 @@ export function App() {
       window.clearTimeout(timer);
     };
   }, [start, end, refreshTick, lensOn, rowPreset.perCategory]);
+
+  // Only escalate to "delayed" after the pause sticks — brief rate-limits stay as loading.
+  useEffect(() => {
+    if (!wikiPaused) {
+      setDiscoverDelayed(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setDiscoverDelayed(true), 8000);
+    return () => window.clearTimeout(timer);
+  }, [wikiPaused]);
 
   // Search: Wikipedia (via the API, cached server-side) + local database, relevance order.
   useEffect(() => {
@@ -775,6 +787,7 @@ export function App() {
           onZoom={setZoom}
           loadingMore={loadingMore}
           wikiPaused={wikiPaused}
+          discoverDelayed={discoverDelayed}
         />
         {selected && (
           <DetailPanel

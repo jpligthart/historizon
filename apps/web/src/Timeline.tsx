@@ -33,6 +33,8 @@ type Props = {
   loadingMore?: boolean;
   /** SPARQL is paused (rate limit / upstream down); discovery waits. */
   wikiPaused?: boolean;
+  /** Pause lasted long enough to show a calmer "delayed" hint. */
+  discoverDelayed?: boolean;
   /** Zoom presets (years in view), shown next to the navigation buttons. */
   zoomPresets: readonly number[];
   /** Nederland-bril: rank Dutch items this many times higher (1 = off). */
@@ -84,6 +86,7 @@ export function Timeline({
   onNow,
   loadingMore = false,
   wikiPaused = false,
+  discoverDelayed = false,
   zoomPresets,
   nlBoost = 1,
   maxRows,
@@ -243,7 +246,7 @@ export function Timeline({
       {loadingMore && (
         <div className={`tl-status${wikiPaused ? " paused" : ""}`} role="status">
           {!wikiPaused && <span className="spinner" aria-hidden="true" />}
-          {t(locale, wikiPaused ? "wikidataUnavailable" : "loadingMore")}
+          {t(locale, discoverDelayed ? "discoverDelayed" : "loadingMore")}
         </div>
       )}
 

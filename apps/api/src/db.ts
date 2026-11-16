@@ -27,6 +27,8 @@ export type ItemRow = {
   wikipedia_url_nl: string | null;
   wikidata_id: string | null;
   extract_cached_at: string | null;
+  /** Wikimedia thumbnail URL; '' = checked, none available; null = not fetched yet. */
+  image_url: string | null;
   importance: number | null;
   nl_link: number | null;
   domain: string | null;
@@ -51,7 +53,8 @@ export function openDb(): DatabaseSync {
 
 const ITEM_COLUMNS = [
   "id", "title", "title_nl", "category", "start_year", "end_year", "description", "description_nl",
-  "wikipedia_url", "wikipedia_url_nl", "wikidata_id", "extract_cached_at", "importance", "nl_link", "domain",
+  "wikipedia_url", "wikipedia_url_nl", "wikidata_id", "extract_cached_at", "image_url",
+  "importance", "nl_link", "domain",
 ];
 
 function itemsTableSql(name: string): string {
@@ -69,6 +72,7 @@ function itemsTableSql(name: string): string {
       wikipedia_url_nl TEXT,
       wikidata_id TEXT,
       extract_cached_at TEXT,
+      image_url TEXT,
       importance INTEGER,
       nl_link INTEGER,
       domain TEXT
@@ -167,6 +171,10 @@ function migrate(database: DatabaseSync): void {
     // Field an item belongs to (Domain); NULL = not determined yet. Filled for persons only, for now.
     database.exec(`ALTER TABLE items ADD COLUMN domain TEXT`);
   }
+  if (!columns.has("image_url")) {
+    // Lead thumbnail URL from Wikipedia (hotlink only). '' = checked, no image.
+    database.exec(`ALTER TABLE items ADD COLUMN image_url TEXT`);
+  }
   database.exec(`CREATE INDEX IF NOT EXISTS idx_items_wiki_url ON items(wikipedia_url)`);
 }
 
@@ -183,6 +191,7 @@ export function rowToItem(row: ItemRow): TimelineItem {
     wikipediaUrl: row.wikipedia_url,
     wikipediaUrlNl: row.wikipedia_url_nl,
     wikidataId: row.wikidata_id,
+    imageUrl: row.image_url || null,
     descriptionFromWikipedia: row.extract_cached_at !== null,
     importance: row.importance,
     nlLink: row.nl_link === null ? null : row.nl_link === 1,
@@ -192,7 +201,10 @@ export function rowToItem(row: ItemRow): TimelineItem {
 
 export function upsertItem(
   database: DatabaseSync,
-  item: Omit<TimelineItem, "description" | "descriptionNl" | "descriptionFromWikipedia" | "importance" | "nlLink" | "domain"> & {
+  item: Omit<
+    TimelineItem,
+    "description" | "descriptionNl" | "descriptionFromWikipedia" | "imageUrl" | "importance" | "nlLink" | "domain"
+  > & {
     description?: string | null;
     descriptionNl?: string | null;
   },
@@ -647,16 +659,26 @@ export function updateDescription(
   description: string,
   wikipediaUrl: string | null,
   lang: "en" | "nl" = "en",
+  imageUrl: string | null = null,
 ): void {
   const [descCol, urlCol] = lang === "nl" ? ["description_nl", "wikipedia_url_nl"] : ["description", "wikipedia_url"];
   database
     .prepare(
       `UPDATE items
-       SET ${descCol} = ?, ${urlCol} = COALESCE(?, ${urlCol}), extract_cached_at = ?
+       SET ${descCol} = ?,
+           ${urlCol} = COALESCE(?, ${urlCol}),
+           extract_cached_at = ?,
+           -- Prefer a real thumb URL; otherwise keep prior value; '' marks "checked, none".
+           image_url = COALESCE(NULLIF(?, ''), image_url, '')
        WHERE id = ?`,
     )
-    .run(description, wikipediaUrl, new Date().toISOString(), id);
+    .run(description, wikipediaUrl, new Date().toISOString(), imageUrl, id);
   refreshFts(database, id);
+}
+
+/** Mark lead-image lookup done when Wikipedia had no usable thumb (avoids repeat fetches). */
+export function markImageChecked(database: DatabaseSync, id: string): void {
+  database.prepare(`UPDATE items SET image_url = COALESCE(image_url, '') WHERE id = ?`).run(id);
 }
 
 export function getMeta(database: DatabaseSync) {

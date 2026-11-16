@@ -12,21 +12,25 @@ function titleFromUrl(titleOrUrl: string): string | null {
   }
 }
 
-/** Fetch a short plain-text intro extract from the MediaWiki API. Cached by caller. */
+/** Fetch a short plain-text intro extract (+ optional lead thumbnail URL). Cached by caller. */
 export async function fetchWikipediaExtract(
   titleOrUrl: string,
   lang: WikiLang = "en",
-): Promise<{ extract: string; url: string } | null> {
+): Promise<{ extract: string; url: string; imageUrl: string | null } | null> {
   const title = titleFromUrl(titleOrUrl);
   if (!title) return null;
 
   const params = new URLSearchParams({
     action: "query",
-    prop: "extracts|info",
+    prop: "extracts|info|pageimages",
     exintro: "1",
     explaintext: "1",
     redirects: "1",
     inprop: "url",
+    // URL only — browser loads from Wikimedia; we never store the bytes.
+    piprop: "thumbnail",
+    pithumbsize: "320",
+    pilicense: "any",
     titles: title,
     format: "json",
     formatversion: "2",
@@ -41,16 +45,25 @@ export async function fetchWikipediaExtract(
   if (!res.ok) return null;
 
   const data = (await res.json()) as {
-    query?: { pages?: Array<{ extract?: string; fullurl?: string; missing?: boolean }> };
+    query?: {
+      pages?: Array<{
+        extract?: string;
+        fullurl?: string;
+        missing?: boolean;
+        thumbnail?: { source?: string };
+      }>;
+    };
   };
   const page = data.query?.pages?.[0];
   if (!page || page.missing || !page.extract) return null;
 
   const full = page.extract.trim();
   const extract = full.slice(0, 600);
+  const imageUrl = page.thumbnail?.source?.trim() || null;
   return {
     extract: extract.length < full.length ? `${extract}…` : extract,
     url: page.fullurl ?? `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title)}`,
+    imageUrl,
   };
 }
 

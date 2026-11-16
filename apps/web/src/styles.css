@@ -490,7 +490,19 @@ input:focus-visible {
 }
 
 .main.with-detail {
-  grid-template-columns: minmax(0, 1fr) 440px;
+  grid-template-columns: minmax(0, 1fr) 480px;
+}
+
+@media (min-width: 1400px) {
+  .main.with-detail {
+    grid-template-columns: minmax(0, 1fr) 560px;
+  }
+}
+
+@media (min-width: 1800px) {
+  .main.with-detail {
+    grid-template-columns: minmax(0, 1fr) 640px;
+  }
 }
 
 /* ---------- Timeline card ---------- */
@@ -1226,6 +1238,18 @@ input:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.detail-image {
+  display: block;
+  max-width: 100%;
+  max-height: 280px;
+  width: auto;
+  height: auto;
+  margin-inline: auto;
+  /* Soft edge so white/light thumbs (flags, coats of arms) don't vanish into the panel. */
+  background: var(--surface-soft);
+  border: 1px solid var(--line-strong);
 }
 
 .attribution {

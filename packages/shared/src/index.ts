@@ -82,6 +82,10 @@ export interface TimelineItem {
   wikipediaUrl: string | null;
   wikipediaUrlNl: string | null;
   wikidataId: string | null;
+  /**
+   * Lead image URL from Wikimedia (hotlinked, not stored locally). Null when unknown or none.
+   */
+  imageUrl: string | null;
   /** True when the description is a cached Wikipedia extract (CC BY-SA 4.0, needs attribution). */
   descriptionFromWikipedia: boolean;
   /** Notability (Wikipedia sitelink count); null for curated items without a Wikidata link. */

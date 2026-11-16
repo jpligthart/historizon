@@ -88,6 +88,19 @@ export function DetailPanel({
 
       {loaded ? (
         <div className="detail-body">
+          {detail.imageUrl && (
+            <img
+              className="detail-image"
+              src={detail.imageUrl}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                e.currentTarget.hidden = true;
+              }}
+            />
+          )}
           {detailFailed && <p className="extract-lang-note">{t(locale, "extractFailed")}</p>}
           {!detailFailed && englishOnly && (
             <p className="extract-lang-note">{t(locale, "extractEnglishOnly")}</p>

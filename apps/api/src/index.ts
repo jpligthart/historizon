@@ -11,6 +11,7 @@ import {
   getItem,
   getItemsByWikidataIds,
   getMeta,
+  markImageChecked,
   openDb,
   queryItems,
   rowToItem,
@@ -148,10 +149,12 @@ app.get("/api/items/:id", rateLimit("enrich", 60), async (c) => {
   let item = rowToItem(row);
   const enrich = c.req.query("enrich") !== "0";
   const lang = c.req.query("lang") === "nl" ? "nl" : "en";
+  // image_url null = never tried; '' = tried, none; URL = have one.
+  let needsImage = row.image_url === null;
 
   try {
     // Dutch UI: resolve nlwiki (from stored URL, Wikidata sitelink, or title guess) then extract.
-    if (enrich && lang === "nl" && !item.descriptionNl) {
+    if (enrich && lang === "nl" && (!item.descriptionNl || needsImage)) {
       let nlUrl = item.wikipediaUrlNl;
       if (!nlUrl && item.wikidataId) {
         nlUrl = await wikipediaSitelink(item.wikidataId, "nl");
@@ -159,16 +162,25 @@ app.get("/api/items/:id", rateLimit("enrich", 60), async (c) => {
       const nlSource = nlUrl ?? item.titleNl ?? item.title;
       if (nlSource) {
         const extracted = await fetchWikipediaExtract(nlSource, "nl");
-        if (extracted) updateDescription(database, id, extracted.extract, extracted.url, "nl");
+        if (extracted) {
+          updateDescription(database, id, extracted.extract, extracted.url, "nl", extracted.imageUrl);
+        }
       }
       const afterNl = getItem(database, id);
-      if (afterNl) item = rowToItem(afterNl);
+      if (afterNl) {
+        item = rowToItem(afterNl);
+        needsImage = afterNl.image_url === null;
+      }
     }
     // English extract when missing (also the fallback body when there is no Dutch page).
-    if (enrich && !item.description && item.wikipediaUrl) {
+    if (enrich && (!item.description || needsImage) && item.wikipediaUrl) {
       const extracted = await fetchWikipediaExtract(item.wikipediaUrl, "en");
-      if (extracted) updateDescription(database, id, extracted.extract, extracted.url, "en");
+      if (extracted) {
+        updateDescription(database, id, extracted.extract, extracted.url, "en", extracted.imageUrl);
+      }
     }
+    // Seal "no image" only after attempts finished without throwing (retry on rate-limit).
+    if (enrich) markImageChecked(database, id);
   } catch (err) {
     console.warn(`[extract] ${id}:`, (err as Error).message);
   }

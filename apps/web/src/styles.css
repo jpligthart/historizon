@@ -164,7 +164,8 @@ input:focus-visible {
 
 .menu-row {
   display: flex;
-  flex-wrap: wrap; /* on narrow screens the label goes above the buttons */
+  flex-wrap: wrap;
+  /* on narrow screens the label goes above the buttons */
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -262,7 +263,7 @@ input:focus-visible {
   }
 }
 
-.search > svg {
+.search>svg {
   position: absolute;
   left: 14px;
   top: 13px;
@@ -624,8 +625,13 @@ input:focus-visible {
   margin-left: 6px;
 }
 
-.help-modal {
-  gap: 16px;
+.about-modal.help-modal {
+  width: min(620px, 100%);
+  gap: 20px;
+}
+
+.help-modal .about-section+.about-section {
+  margin-top: 10px;
 }
 
 .help-title {
@@ -893,7 +899,7 @@ input:focus-visible {
 }
 
 /* The panel scrolls; its parts must keep their size instead of shrinking to fit. */
-.detail > * {
+.detail>* {
   flex-shrink: 0;
 }
 
@@ -1165,6 +1171,7 @@ input:focus-visible {
 }
 
 @media (max-width: 640px) {
+
   .top,
   .toolbar,
   .main {
@@ -1459,7 +1466,7 @@ input:focus-visible {
   background: var(--surface);
 }
 
-.about-links li + li {
+.about-links li+li {
   border-top: 1px solid var(--line);
 }
 
@@ -1477,7 +1484,7 @@ input:focus-visible {
   background: var(--surface-soft);
 }
 
-.about-link > span {
+.about-link>span {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1676,6 +1683,7 @@ input:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .lens-track,
   .lens-knob {
     transition: none;

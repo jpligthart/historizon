@@ -293,26 +293,65 @@ export function Timeline({
                 </svg>
               </button>
             </div>
-            <dl className="help-list">
-              <dt>
-                <kbd>Ctrl</kbd> + {t(locale, "helpScroll")}
-              </dt>
-              <dd>{t(locale, "helpZoom")}</dd>
-              <dt>
-                <kbd>Shift</kbd> + {t(locale, "helpScroll")}
-              </dt>
-              <dd>{t(locale, "helpPan")}</dd>
-              <dt>{t(locale, "helpDrag")}</dt>
-              <dd>{t(locale, "helpPan")}</dd>
-              <dt>
-                <kbd>Ctrl</kbd> + {t(locale, "helpClickChip")}
-              </dt>
-              <dd>{t(locale, "helpSolo")}</dd>
-              <dt>
-                <kbd>Esc</kbd>
-              </dt>
-              <dd>{t(locale, "helpEsc")}</dd>
-            </dl>
+            <section className="about-section">
+              <h3 className="about-section-label">{t(locale, "helpSecTimeline")}</h3>
+              <dl className="help-list">
+                <dt>{t(locale, "helpClickItem")}</dt>
+                <dd>{t(locale, "helpClickItemDesc")}</dd>
+                <dt>
+                  <kbd>Ctrl</kbd> + {t(locale, "helpScroll")}
+                </dt>
+                <dd>{t(locale, "helpZoom")}</dd>
+                <dt>
+                  <kbd>Shift</kbd> + {t(locale, "helpScroll")}
+                </dt>
+                <dd>{t(locale, "helpPan")}</dd>
+                <dt>{t(locale, "helpDrag")}</dt>
+                <dd>{t(locale, "helpPan")}</dd>
+                <dt>
+                  {zoomPresets[0]} – {zoomPresets[zoomPresets.length - 1]}
+                </dt>
+                <dd>{t(locale, "helpPresetsDesc")}</dd>
+                <dt>{t(locale, "now")}</dt>
+                <dd>{t(locale, "helpNowDesc")}</dd>
+                <dt>
+                  <kbd>Esc</kbd>
+                </dt>
+                <dd>{t(locale, "helpEsc")}</dd>
+              </dl>
+            </section>
+            <section className="about-section">
+              <h3 className="about-section-label">{t(locale, "helpSecFilter")}</h3>
+              <dl className="help-list">
+                <dt>{t(locale, "helpChip")}</dt>
+                <dd>{t(locale, "helpChipDesc")}</dd>
+                <dt>
+                  <kbd>Ctrl</kbd> + {t(locale, "helpClickChip")}
+                </dt>
+                <dd>{t(locale, "helpSolo")}</dd>
+                <dt>{t(locale, "allCategories")}</dt>
+                <dd>{t(locale, "helpAllDesc")}</dd>
+                <dt>{t(locale, "nlLens")}</dt>
+                <dd>{t(locale, "nlLensHint")}</dd>
+              </dl>
+            </section>
+            <section className="about-section">
+              <h3 className="about-section-label">{t(locale, "helpSecSearch")}</h3>
+              <dl className="help-list">
+                <dt>{t(locale, "helpType")}</dt>
+                <dd>{t(locale, "helpTypeDesc")}</dd>
+                <dt>
+                  <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Enter</kbd>
+                </dt>
+                <dd>{t(locale, "helpPick")}</dd>
+                <dt>{t(locale, "helpCount")}</dt>
+                <dd>{t(locale, "jump")}</dd>
+                <dt>
+                  <kbd>Esc</kbd>
+                </dt>
+                <dd>{t(locale, "helpSearchEsc")}</dd>
+              </dl>
+            </section>
             <p className="help-note">{t(locale, "helpMac")}</p>
           </div>
         </div>

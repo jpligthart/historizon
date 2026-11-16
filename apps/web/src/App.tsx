@@ -32,8 +32,8 @@ const NOW_YEAR = Math.floor(NOW);
 /** A little breathing room to the right of "now". */
 const RIGHT_PAD = 0.03;
 /**
- * "Rijen" setting: rows per lane, and how many of the most notable items per category to
- * load for it (more rows need more items to fill them).
+ * "Rijen" setting: rows per lane, and how many items per category to load for it
+ * (more rows need more items to fill them; the API weighted-samples from a larger pool).
  */
 const ROW_PRESETS = [
   { key: "compact", rows: 4, perCategory: 20 },
@@ -65,6 +65,23 @@ const POLL_MS = 1500;
 const MAX_RESULTS = 8;
 
 const LENS_KEY = "historizon.nlLens";
+/** Stable salt for the API's weighted sample; new browser → new mix, same session → same mix. */
+const VARIETY_KEY = "historizon.variety";
+
+function readVarietySalt(): number {
+  try {
+    const v = localStorage.getItem(VARIETY_KEY);
+    if (v !== null) {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+    const n = (Math.random() * 0x7fffffff) | 0;
+    localStorage.setItem(VARIETY_KEY, String(n));
+    return n;
+  } catch {
+    return 0;
+  }
+}
 
 /** Stored Nederland-bril choice; null = never chosen (then it follows the language). */
 function readLensPref(): boolean | null {
@@ -85,6 +102,8 @@ function writeLensPref(on: boolean): void {
 }
 const MAX_POLLS = 40;
 const CATEGORY_ORDER = Object.fromEntries(CATEGORIES.map((c, i) => [c, i])) as Record<Category, number>;
+/** Fixed for the tab lifetime; changing localStorage mid-session is ignored on purpose. */
+const VARIETY_SALT = readVarietySalt();
 
 export function App() {
   const [locale, setLocale] = useState<Locale>("nl");
@@ -189,7 +208,7 @@ export function App() {
     let timer = 0;
     let polls = 0;
     const load = () => {
-      fetchItems({ from: start, to: end, limit: 2000, perCategory: rowPreset.perCategory, discover: true, lens: lensOn ? "nl" : null, signal: ctrl.signal })
+      fetchItems({ from: start, to: end, limit: 2000, perCategory: rowPreset.perCategory, discover: true, lens: lensOn ? "nl" : null, variety: VARIETY_SALT, signal: ctrl.signal })
         .then(({ items: next, pending, pausedMs }) => {
           setItems(next);
           const paused = pausedMs > 0;
@@ -282,7 +301,7 @@ export function App() {
     // Point / closed span: query that lifespan. Ongoing (null end): through "now".
     const to = selected.endYear ?? NOW_YEAR;
     let cancelled = false;
-    fetchItems({ from: selected.startYear, to, limit: 2000, perCategory: 15, lens: lensOn ? "nl" : null })
+    fetchItems({ from: selected.startYear, to, limit: 2000, perCategory: 15, lens: lensOn ? "nl" : null, variety: VARIETY_SALT })
       .then(({ items: next }) => {
         if (!cancelled) setConcurrentAll(next);
       })

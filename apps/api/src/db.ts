@@ -2,7 +2,16 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { Category, Domain, TimelineItem } from "@historizon/shared";
-import { CATEGORIES, DOMAIN_DECAY, NL_BOOST, DOMAINS } from "@historizon/shared";
+import {
+  CATEGORIES,
+  DOMAIN_DECAY,
+  EXPLORE_FRACTION,
+  MAX_POOL,
+  NL_BOOST,
+  POOL_FACTOR,
+  SCORE_TEMPERATURE,
+  DOMAINS,
+} from "@historizon/shared";
 import type { ClassCache, WikidataItem } from "./wikidata.js";
 
 export type ItemRow = {
@@ -240,6 +249,80 @@ export function upsertItem(
     );
 }
 
+/** Pool row: item columns plus ranking fields used for weighted sampling. */
+type RankedRow = ItemRow & {
+  score: number;
+  diversify: number;
+  drn: number;
+};
+
+/** FNV-1a over a string → unsigned 32-bit. */
+function hash32(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Bucket from/to so a small pan/zoom keeps the same sample seed (~1/10 of span, min 1 yr). */
+function bucketRange(from: number, to: number): { bFrom: number; bTo: number } {
+  const span = Math.max(to - from, 1);
+  const step = Math.max(1, Math.round(span / 10));
+  return { bFrom: Math.floor(from / step) * step, bTo: Math.ceil(to / step) * step };
+}
+
+/** Deterministic u in (0, 1] from seed + id (for Gumbel-weighted sample). */
+function unitFloat(seed: number, id: string): number {
+  return ((hash32(`${seed}:${id}`) & 0xfffffff) + 1) / 0x10000000;
+}
+
+/** Effective notability after domain decay (same idea as the SQL ORDER BY). */
+function effectiveScore(row: RankedRow): number {
+  const decayFactor = row.diversify ? DOMAIN_DECAY ** Math.min(Math.max(row.drn, 0), 12) : 1;
+  return Math.max(row.score * decayFactor, 1e-9);
+}
+
+/**
+ * Weighted sample without replacement: keep the top `n` by weight / -ln(u).
+ * Soft temperature keeps mid-tier competitive. Fast path when the pool already fits.
+ */
+function weightedSample(rows: RankedRow[], n: number, seed: number): RankedRow[] {
+  if (n <= 0 || rows.length === 0) return [];
+  if (rows.length <= n) return rows;
+  return rows
+    .map((row) => {
+      const weight = Math.max(effectiveScore(row) ** SCORE_TEMPERATURE, 1e-9);
+      const u = unitFloat(seed, row.id);
+      return { row, key: weight / -Math.log(u) };
+    })
+    .sort((a, b) => b.key - a.key)
+    .slice(0, n)
+    .map((x) => x.row);
+}
+
+/**
+ * Soft-sample N from a score-ranked pool, reserving EXPLORE_FRACTION slots for items
+ * outside the hard top-N so mid-tier actually appears (not only reshuffled notables).
+ */
+function sampleCategory(pool: RankedRow[], n: number, seed: number): RankedRow[] {
+  if (pool.length <= n) return pool;
+  const ranked = [...pool].sort(
+    (a, b) => effectiveScore(b) - effectiveScore(a) || a.start_year - b.start_year || a.id.localeCompare(b.id),
+  );
+  const tail = ranked.slice(n);
+  const head = ranked.slice(0, n);
+  const exploreTarget = Math.min(
+    Math.max(1, Math.round(n * EXPLORE_FRACTION)),
+    n - 1,
+    tail.length,
+  );
+  const explore = weightedSample(tail, exploreTarget, seed ^ 0x9e3779b9);
+  const core = weightedSample(head, n - explore.length, seed);
+  return [...core, ...explore];
+}
+
 export function queryItems(
   database: DatabaseSync,
   opts: {
@@ -248,10 +331,12 @@ export function queryItems(
     categories?: Category[];
     q?: string;
     limit?: number;
-    /** Max items per category, most notable first. */
+    /** Max items per category after weighted sample from a larger pool. */
     perCategory?: number;
     /** "nl": rank items with a Dutch connection NL_BOOST times higher. */
     lens?: "nl" | null;
+    /** Client variety salt; same salt + viewport bucket → same sample. Default 0. */
+    variety?: number;
   },
 ): TimelineItem[] {
   const limit = Math.min(Math.max(opts.limit ?? 500, 1), 2000);
@@ -283,10 +368,14 @@ export function queryItems(
     return rows.map(rowToItem);
   }
 
-  // Level of detail: per category keep only the most notable items in the range. Persons
-  // from the same domain count DOMAIN_DECAY less each (2nd ×0.5, 3rd ×0.25…), so the
-  // selection mixes domains; the timeline layout applies the same rule.
+  // Level of detail: rank a pool of M candidates per category (score + domain decay for
+  // persons), then soft-sample down to N with an explore quota. Same viewport bucket +
+  // variety → same mix. M is capped so this stays cheap vs the SQL windows.
   const perCategory = Math.min(Math.max(opts.perCategory ?? limit, 1), 2000);
+  const poolSize = Math.min(perCategory * POOL_FACTOR, MAX_POOL);
+  const variety = Number.isFinite(opts.variety) ? (opts.variety as number) : 0;
+  const { bFrom, bTo } = bucketRange(opts.from, opts.to);
+  const lensKey = opts.lens === "nl" ? "nl" : "0";
   const score = `COALESCE(i.importance, ${SEED_IMPORTANCE})
           * ${opts.lens === "nl" ? `(CASE WHEN i.nl_link = 1 THEN ${NL_BOOST} ELSE 1 END)` : "1"}`;
   const rows = database
@@ -314,9 +403,22 @@ export function queryItems(
     LIMIT ?
   `,
     )
-    .all(opts.to, opts.from, ...categoryValues, perCategory, limit) as ItemRow[];
+    .all(opts.to, opts.from, ...categoryValues, poolSize, limit) as RankedRow[];
 
-  return rows.map(rowToItem);
+  const byCategory = new Map<Category, RankedRow[]>();
+  for (const row of rows) {
+    const list = byCategory.get(row.category);
+    if (list) list.push(row);
+    else byCategory.set(row.category, [row]);
+  }
+
+  const sampled: RankedRow[] = [];
+  for (const [category, pool] of byCategory) {
+    const seed = hash32(`${variety}|${bFrom}|${bTo}|${lensKey}|${category}`);
+    sampled.push(...sampleCategory(pool, perCategory, seed));
+  }
+  sampled.sort((a, b) => a.start_year - b.start_year || a.id.localeCompare(b.id));
+  return sampled.map(rowToItem);
 }
 
 /** Curated seed items have no sitelink count; rank them as fairly notable. */

@@ -113,12 +113,15 @@ app.get("/api/items", async (c, next) => {
   const q = c.req.query("q") ?? undefined;
   const limit = c.req.query("limit") ? Number(c.req.query("limit")) : undefined;
   const perCategory = c.req.query("perCategory") ? Number(c.req.query("perCategory")) : undefined;
+  // Stable weighted sample salt from the client; missing/invalid → 0 (deterministic).
+  const varietyRaw = c.req.query("variety");
+  const variety = varietyRaw !== undefined && Number.isFinite(Number(varietyRaw)) ? Number(varietyRaw) : 0;
 
   // fetch=1: also discover more items for this viewport in the background.
   // lens=nl: Nederland-bril (Dutch items rank higher; Dutch tiles are fetched too).
   const lens = c.req.query("lens") === "nl" ? "nl" : null;
   const pending = c.req.query("fetch") === "1" ? discovery.ensure(from, to, categories, lens) : 0;
-  const items = queryItems(database, { from, to, categories, q, limit, perCategory, lens });
+  const items = queryItems(database, { from, to, categories, q, limit, perCategory, lens, variety });
   // How long SPARQL is still paused after a 429/5xx (0 = free to fetch).
   const pausedMs = Math.round(throttles.sparql.pausedFor());
   return c.json({ items, from, to, count: items.length, pending, pausedMs });

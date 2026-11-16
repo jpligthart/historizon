@@ -52,6 +52,21 @@ export type Domain = (typeof DOMAINS)[number];
  */
 export const DOMAIN_DECAY = 0.5;
 
+/**
+ * Timeline selection: rank a pool of M = min(N × POOL_FACTOR, MAX_POOL) candidates per
+ * category (score + domain decay), then weighted-sample down to N (= perCategory). The API
+ * returns only the sampled N; the pool never goes to the client.
+ *
+ * Soft temperature (score ** t) and EXPLORE_FRACTION pull mid-tier in without a huge pool;
+ * M stays capped so JS sampling stays cheap.
+ */
+export const POOL_FACTOR = 4;
+export const MAX_POOL = 160;
+/** weight ∝ score ** SCORE_TEMPERATURE (1 = linear / harsh; lower = more mix). */
+export const SCORE_TEMPERATURE = 0.4;
+/** Fraction of N reserved for items outside the hard top-N of the pool. */
+export const EXPLORE_FRACTION = 0.3;
+
 /** Integer year; negative = BCE. */
 export type Year = number;
 

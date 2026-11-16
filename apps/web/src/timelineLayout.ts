@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import type { Category, TimelineItem } from "@historizon/shared";
-import { DOMAIN_DECAY } from "@historizon/shared";
+import { DOMAIN_DECAY, SCORE_TEMPERATURE } from "@historizon/shared";
 
 export const BAR_H = 26;
 export const PITCH = 32;
@@ -90,9 +90,9 @@ export function isOngoing(item: TimelineItem): boolean {
 
 /**
  * Lay items out in one lane per category. Inside a lane, items are packed into at most
- * MAX_ROWS rows so that bars and their (inside or outside) labels never overlap. Items are
- * placed most-notable-first (the selection always goes first), so what gets dropped when a
- * lane is full is the least notable.
+ * MAX_ROWS rows so that bars and their (inside or outside) labels never overlap. Packing
+ * uses a softened notability score (same temperature as the API sample) so mid-tier items
+ * in the response can still land in visible rows.
  */
 export function layoutTimeline(opts: {
   items: TimelineItem[];
@@ -117,7 +117,9 @@ export function layoutTimeline(opts: {
   const lanes: Lane[] = [];
   const bars: Bar[] = [];
   const rank = (i: TimelineItem) =>
-    i.id === selectedId ? Infinity : (i.importance ?? DEFAULT_IMPORTANCE) * (i.nlLink ? nlBoost : 1);
+    i.id === selectedId
+      ? Infinity
+      : (i.importance ?? DEFAULT_IMPORTANCE) ** SCORE_TEMPERATURE * (i.nlLink ? nlBoost : 1);
   let y = 0;
 
   for (const category of categories) {
